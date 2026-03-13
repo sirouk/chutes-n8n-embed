@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - DEV
+      - "beta-*"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  syntax-smoke:
+    name: Syntax Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout chutes-n8n-embed
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Run syntax smoke checks
+        run: ./scripts/smoke-test.sh --syntax
+
+  local-e2e:
+    name: Local E2E (Test IdP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: syntax-smoke
+
+    steps:
+      - name: Checkout chutes-n8n-embed
+        uses: actions/checkout@v6
+        with:
+          path: chutes-n8n-embed
+
+      - name: Checkout n8n-nodes-chutes
+        uses: actions/checkout@v6
+        with:
+          repository: chutesai/n8n-nodes-chutes
+          path: n8n-nodes-chutes
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Run destructive test-IdP E2E
+        working-directory: chutes-n8n-embed
+        run: ./scripts/e2e-test.sh
