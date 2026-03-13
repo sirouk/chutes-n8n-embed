@@ -1,6 +1,6 @@
 # chutes-n8n-local
 
-Self-hosted n8n with native `Sign in with Chutes`, bundled `n8n-nodes-chutes`, local `e2ee-local-proxy.chutes.dev` mode, and public-domain mode with ACME.
+Self-hosted n8n with native `Login with Chutes`, bundled `n8n-nodes-chutes`, local `e2ee-local-proxy.chutes.dev` mode, and public-domain mode with ACME.
 
 ## Quick Start
 
