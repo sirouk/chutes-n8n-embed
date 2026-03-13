@@ -197,6 +197,7 @@ created_owner=false
 
 if owner_is_configured; then
     echo "    Owner already configured"
+    echo "    n8n completed owner setup before the bootstrap step ran"
 elif setup_result="$(n8n_api POST /rest/owner/setup "$setup_body")" && [[ "$setup_result" == *'"id"'* ]]; then
     echo "    Owner account created"
     created_owner=true
@@ -232,7 +233,7 @@ if [ -n "${CHUTES_API_KEY:-}" ]; then
         echo "    Chutes API credential already present"
     else
         build_chutes_credential_json | compose exec -T n8n \
-            sh -c "cat > /tmp/creds.json && n8n import:credentials --input=/tmp/creds.json --userId=${owner_user_id_value} && rm -f /tmp/creds.json"
+            sh -c "cat > /tmp/creds.json && n8n import:credentials --input=/tmp/creds.json && rm -f /tmp/creds.json"
         echo "    Chutes API credential imported"
     fi
 fi

@@ -2,6 +2,8 @@ worker_processes 1;
 error_log /dev/stderr info;
 pid /tmp/nginx.pid;
 
+env ALLOW_NON_CONFIDENTIAL;
+
 events {
     worker_connections 1024;
 }
@@ -118,6 +120,77 @@ http {
         location = /health {
             default_type text/plain;
             return 200 "ok\n";
+        }
+
+        more_set_headers 'Access-Control-Allow-Origin: *';
+        more_set_headers 'Access-Control-Allow-Methods: GET, POST, PUT, DELETE, PATCH, OPTIONS';
+        more_set_headers 'Access-Control-Allow-Headers: *';
+        more_set_headers 'Access-Control-Expose-Headers: *';
+
+        location = /v1/models {
+            if ($request_method = 'OPTIONS') {
+                more_set_headers 'Access-Control-Allow-Origin: *';
+                more_set_headers 'Access-Control-Allow-Methods: GET, POST, OPTIONS';
+                more_set_headers 'Access-Control-Allow-Headers: *';
+                more_set_headers 'Access-Control-Max-Age: 86400';
+                more_set_headers 'Content-Length: 0';
+                return 204;
+            }
+
+            proxy_pass https://llm.chutes.ai/v1/models;
+            proxy_ssl_server_name on;
+            proxy_set_header Host llm.chutes.ai;
+            proxy_set_header Authorization "";
+            proxy_set_header X-API-Key "";
+            proxy_pass_request_headers off;
+        }
+
+        location = /v1/messages {
+            if ($request_method = 'OPTIONS') {
+                more_set_headers 'Access-Control-Allow-Origin: *';
+                more_set_headers 'Access-Control-Allow-Methods: GET, POST, OPTIONS';
+                more_set_headers 'Access-Control-Allow-Headers: *';
+                more_set_headers 'Access-Control-Max-Age: 86400';
+                more_set_headers 'Content-Length: 0';
+                return 204;
+            }
+
+            content_by_lua_block {
+                local handler = require("claude_handler")
+                handler.handle()
+            }
+        }
+
+        location = /v1/responses {
+            if ($request_method = 'OPTIONS') {
+                more_set_headers 'Access-Control-Allow-Origin: *';
+                more_set_headers 'Access-Control-Allow-Methods: GET, POST, OPTIONS';
+                more_set_headers 'Access-Control-Allow-Headers: *';
+                more_set_headers 'Access-Control-Max-Age: 86400';
+                more_set_headers 'Content-Length: 0';
+                return 204;
+            }
+
+            content_by_lua_block {
+                local handler = require("responses_handler")
+                handler.handle()
+            }
+        }
+
+        location /v1/ {
+            if ($request_method = 'OPTIONS') {
+                more_set_headers 'Access-Control-Allow-Origin: *';
+                more_set_headers 'Access-Control-Allow-Methods: GET, POST, OPTIONS';
+                more_set_headers 'Access-Control-Allow-Headers: *';
+                more_set_headers 'Access-Control-Max-Age: 86400';
+                more_set_headers 'Content-Length: 0';
+                return 204;
+            }
+
+            content_by_lua_block {
+                local handler = require("e2ee_handler")
+                handler.handle()
+            }
         }
 
         location / {

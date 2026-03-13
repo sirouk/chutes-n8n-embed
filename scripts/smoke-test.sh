@@ -383,6 +383,29 @@ else
     fail "custom nodes are not registered in n8n"
 fi
 
+if [ "${CHUTES_TRAFFIC_MODE:-direct}" = "e2ee-proxy" ]; then
+    proxy_models_status="$(curl_edge -sk -o /tmp/chutes-n8n-local.proxy-models.out -w '%{http_code}' \
+        "https://${N8N_HOST}/v1/models" 2>/dev/null || echo 000)"
+    if [ "$proxy_models_status" = "200" ]; then
+        pass "e2ee-proxy exposes /v1/models on the local edge"
+    else
+        fail "e2ee-proxy /v1/models route returned status $proxy_models_status"
+    fi
+
+    proxy_chat_status="$(curl_edge -sk -o /tmp/chutes-n8n-local.proxy-chat.out -w '%{http_code}' \
+        -H 'Content-Type: application/json' \
+        -d '{"model":"Qwen/Qwen3-32B","messages":[{"role":"user","content":"hello"}],"stream":false}' \
+        "https://${N8N_HOST}/v1/chat/completions" 2>/dev/null || echo 000)"
+    case "$proxy_chat_status" in
+        200|400|401|403)
+            pass "e2ee-proxy handles /v1/chat/completions on the local edge"
+            ;;
+        *)
+            fail "e2ee-proxy /v1/chat/completions route returned status $proxy_chat_status"
+            ;;
+    esac
+fi
+
 credentials_response="$(curl_edge -sk -b /tmp/chutes-n8n-local.cookies \
     -H 'browser-id: smoke-test-browser' \
     "https://${N8N_HOST}/rest/credentials" 2>/dev/null || true)"

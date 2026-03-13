@@ -66,6 +66,8 @@ Deploy asks for, when a terminal is attached:
 
 - install mode: `local` or `domain`
 - existing-install action: `update` or `wipe`
+- Chutes traffic mode: `direct` or `e2ee-proxy`
+- if you pick `e2ee-proxy`, deploy also asks whether to keep it strict TEE-only for text models
 - Chutes OAuth client ID and secret
 - ACME email for `domain` installs
 
@@ -79,6 +81,19 @@ Existing install behavior:
 - `update` is the default and preserves Postgres and n8n data volumes
 - `wipe` removes containers, volumes, and encrypted n8n state, then recreates everything cleanly
 
+Chutes traffic mode:
+
+- `direct`: the Chutes nodes use native Chutes endpoints and keep Chutes routing and failover behavior
+- `e2ee-proxy`: OpenAI-compatible LLM text traffic uses the local `e2ee-proxy` path
+  By default this follows `e2ee-proxy`'s TEE-only behavior. Deploy asks whether to keep that strict mode, and it writes `ALLOW_NON_CONFIDENTIAL` accordingly.
+  While the backend `/e2e/*` SSO auth fix is rolling out, deploy also keeps `CHUTES_SSO_PROXY_BYPASS=true` so SSO-backed text execution stays direct. Once that backend fix is live, set it to `false` to send SSO text execution through `e2ee-proxy` too.
+
+Traffic-mode scope:
+
+- `local` / `domain` controls how n8n itself is exposed
+- `direct` / `e2ee-proxy` controls how text-based Chutes LLM requests are executed
+- chute discovery and non-text Chutes traffic stay on native Chutes endpoints
+
 ## What Deploy Builds
 
 - Community n8n with native Chutes SSO
@@ -87,6 +102,7 @@ Existing install behavior:
 - one edge service:
   - `local-proxy` for local installs
   - `caddy` for public-domain installs
+- optional `e2ee-proxy` sidecar for domain installs when `CHUTES_TRAFFIC_MODE=e2ee-proxy`
 
 ## Quality
 

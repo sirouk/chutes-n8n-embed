@@ -3,6 +3,14 @@ __SERVER_NAME__ {
 
     encode zstd gzip
 
+    @chutes_v1 path /v1/*
+    reverse_proxy @chutes_v1 https://e2ee-proxy:443 {
+        header_up Host e2ee-proxy
+        transport http {
+            tls_insecure_skip_verify
+        }
+    }
+
     reverse_proxy n8n:5678 {
         header_up X-Forwarded-For {remote_host}
         header_up X-Forwarded-Host {host}

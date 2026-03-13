@@ -26,6 +26,13 @@ function replaceRegexOrThrow(source, pattern, replacement, filePath) {
 	return source.replace(pattern, replacement);
 }
 
+function copyOverlayFile(sourceRelativePath, destinationRelativePath) {
+	const source = path.join(overlayRoot, sourceRelativePath);
+	const destination = path.join(buildDir, destinationRelativePath);
+	fs.mkdirSync(path.dirname(destination), { recursive: true });
+	fs.copyFileSync(source, destination);
+}
+
 const RESOURCE_PLACEHOLDER_VALUE = '__choose_resource_type__';
 
 function patchCredentialTestBaseUrl() {
@@ -88,6 +95,21 @@ function getCredentialTestBaseUrl(): string {
 	}
 
 	fs.writeFileSync(credentialFile, source);
+}
+
+function patchTrafficModeRouting() {
+	copyOverlayFile(
+		'n8n-overlays/n8n-nodes-chutes/nodes/Chutes/transport/apiRequest.ts',
+		'nodes/Chutes/transport/apiRequest.ts',
+	);
+	copyOverlayFile(
+		'n8n-overlays/n8n-nodes-chutes/nodes/Chutes/transport/requestWithChutesCredential.ts',
+		'nodes/Chutes/transport/requestWithChutesCredential.ts',
+	);
+	copyOverlayFile(
+		'n8n-overlays/n8n-nodes-chutes/nodes/ChutesChatModel/GenericChutesChatModel.ts',
+		'nodes/ChutesChatModel/GenericChutesChatModel.ts',
+	);
 }
 
 function patchResourceChooser() {
@@ -276,6 +298,141 @@ const SELECT_RESOURCE_TYPE_OPTION: INodePropertyOptions = {
 	fs.writeFileSync(loadChutesFile, source);
 }
 
+function patchTextProxyModelSelection() {
+	const loadChutesFile = path.join(buildDir, 'nodes', 'Chutes', 'methods', 'loadChutes.ts');
+	let source = fs.readFileSync(loadChutesFile, 'utf8');
+
+	if (!source.includes('function isChutesTextProxyMode(): boolean')) {
+		source = replaceOrThrow(
+			source,
+			`function buildChutesListRequestUrl(includePublic: boolean, limit: number): string {
+`,
+			`function isChutesTextProxyMode(): boolean {
+\treturn String(process.env.CHUTES_TRAFFIC_MODE ?? '').trim() === 'e2ee-proxy';
+}
+
+function getTextProxyBaseUrl(): string {
+\treturn String(process.env.CHUTES_PROXY_BASE_URL ?? '')
+\t\t.trim()
+\t\t.replace(/\\/+$/, '');
+}
+
+function isStrictTeeOnlyTextProxyMode(): boolean {
+\tconst allowNonConfidential = String(process.env.ALLOW_NON_CONFIDENTIAL ?? '')
+\t\t.trim()
+\t\t.toLowerCase();
+
+\treturn (
+\t\tisChutesTextProxyMode() &&
+\t\tallowNonConfidential !== 'true' &&
+\t\tallowNonConfidential !== '1' &&
+\t\tallowNonConfidential !== 'yes' &&
+\t\tallowNonConfidential !== 'y'
+\t);
+}
+
+function parseModelsResponse(response: any): any[] {
+\tif (Array.isArray(response?.data)) {
+\t\treturn response.data;
+\t}
+
+\tif (Array.isArray(response)) {
+\t\treturn response;
+\t}
+
+\treturn [];
+}
+
+async function getProxyTextModelOptions(
+\tcontext: ILoadOptionsFunctions,
+): Promise<INodePropertyOptions[]> {
+\tconst baseUrl = getTextProxyBaseUrl() || 'https://llm.chutes.ai';
+\tlet response: any;
+
+\ttry {
+\t\tresponse = await requestWithChutesCredential(context, {
+\t\t\tmethod: 'GET',
+\t\t\turl: \`\${baseUrl}/v1/models\`,
+\t\t\theaders: {
+\t\t\t\t'Content-Type': 'application/json',
+\t\t\t},
+\t\t});
+\t} catch (error) {
+\t\tif (!shouldFallbackToPublicCatalog(error)) {
+\t\t\tthrow error;
+\t\t}
+
+\t\tresponse = await context.helpers.request({
+\t\t\tjson: true,
+\t\t\tmethod: 'GET',
+\t\t\turl: \`\${baseUrl}/v1/models\`,
+\t\t\theaders: {
+\t\t\t\tAccept: 'application/json',
+\t\t\t\t'Content-Type': 'application/json',
+\t\t\t},
+\t\t});
+\t}
+
+\tconst models = parseModelsResponse(response).filter((model: any) => {
+\t\tif (isStrictTeeOnlyTextProxyMode() && !model?.confidential_compute) {
+\t\t\treturn false;
+\t\t}
+
+\t\tconst type = String(model?.type || '').toLowerCase();
+\t\treturn !type || type.includes('text') || type.includes('chat') || type.includes('llm');
+\t});
+
+\tconst options: INodePropertyOptions[] = [];
+
+\tfor (const model of models) {
+\t\tconst modelId = String(model?.id || model?.name || '').trim();
+\t\tif (!modelId) {
+\t\t\tcontinue;
+\t\t}
+
+\t\tconst descriptionParts = [
+\t\t\tmodel?.confidential_compute ? 'TEE' : null,
+\t\t\tmodel?.context_length ? \`\${model.context_length} tokens\` : null,
+\t\t\tmodel?.description || null,
+\t\t].filter(Boolean);
+
+\t\toptions.push({
+\t\t\tname: model?.name ? \`\${model.name} - \${modelId}\` : modelId,
+\t\t\tvalue: modelId,
+\t\t\tdescription: descriptionParts.join(' | '),
+\t\t});
+\t}
+
+\treturn options;
+}
+
+function buildChutesListRequestUrl(includePublic: boolean, limit: number): string {
+`,
+			loadChutesFile,
+		);
+	}
+
+	if (
+		!source.includes(
+			`		case 'textGeneration':
+			return await (isChutesTextProxyMode()`,
+		)
+	) {
+		source = replaceOrThrow(
+			source,
+			`		case 'textGeneration':
+			return await getLLMChutes.call(this);`,
+			`		case 'textGeneration':
+			return await (isChutesTextProxyMode()
+				? getProxyTextModelOptions(this)
+				: getLLMChutes.call(this));`,
+			loadChutesFile,
+		);
+	}
+
+	fs.writeFileSync(loadChutesFile, source);
+}
+
 function patchNeutralNodeCreatorFlow() {
 	const operationsDir = path.join(buildDir, 'nodes', 'Chutes', 'operations');
 
@@ -295,6 +452,8 @@ function patchNeutralNodeCreatorFlow() {
 }
 
 patchCredentialTestBaseUrl();
+patchTrafficModeRouting();
 patchResourceChooser();
 patchResourceAwareChuteLoading();
+patchTextProxyModelSelection();
 patchNeutralNodeCreatorFlow();

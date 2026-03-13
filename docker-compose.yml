@@ -55,6 +55,9 @@ services:
       - CHUTES_SSO_LOGIN_LABEL=${CHUTES_SSO_LOGIN_LABEL:-Login with Chutes}
       - CHUTES_SSO_SCOPES=${CHUTES_SSO_SCOPES:-openid profile chutes:read chutes:invoke}
       - CHUTES_ADMIN_USERNAMES=${CHUTES_ADMIN_USERNAMES:-}
+      - CHUTES_TRAFFIC_MODE=${CHUTES_TRAFFIC_MODE:-direct}
+      - CHUTES_PROXY_BASE_URL=${CHUTES_PROXY_BASE_URL:-}
+      - CHUTES_CREDENTIAL_TEST_BASE_URL=${CHUTES_CREDENTIAL_TEST_BASE_URL:-}
     volumes:
       - n8n_data:/home/node/.n8n
     depends_on:

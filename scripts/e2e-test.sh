@@ -7,6 +7,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+E2E_TRAFFIC_MODE="direct"
 COMPOSE_FILES="$PROJECT_DIR/docker-compose.yml:$PROJECT_DIR/docker-compose.local.yml:$PROJECT_DIR/docker-compose.test.yml"
 COOKIE_DIR="$(mktemp -d)"
 BACKUP_DIR="$(mktemp -d)"
@@ -86,6 +87,19 @@ assert_nonempty() {
 
     if [ -z "$value" ]; then
         echo "FAIL: $message" >&2
+        exit 1
+    fi
+}
+
+assert_gt() {
+    local actual="$1"
+    local minimum="$2"
+    local message="$3"
+
+    if [ "$actual" -le "$minimum" ]; then
+        echo "FAIL: $message" >&2
+        echo "  expected greater than: $minimum" >&2
+        echo "  actual:               $actual" >&2
         exit 1
     fi
 }
@@ -296,6 +310,53 @@ PY
         "https://${N8N_HOST}/rest/credentials/test"
 }
 
+load_image_chutes() {
+    local subject="$1"
+    local cookie_file="$2"
+    local browser_id="$3"
+    local credential_id payload
+
+    credential_id="$(managed_credential_id_for_subject "$subject")"
+    assert_nonempty "$credential_id" "missing managed Chutes credential id for subject ${subject}"
+
+    payload="$(python3 - "$credential_id" <<'PY'
+import json
+import sys
+
+credential_id = sys.argv[1]
+print(json.dumps({
+    "credentials": {
+        "chutesApi": {
+            "id": credential_id,
+            "name": "Chutes SSO",
+        }
+    },
+    "currentNodeParameters": {
+        "resource": "imageGeneration",
+        "chuteUrl": "",
+        "operation": "generate",
+        "prompt": "",
+        "size": "1024x1024",
+        "n": 1,
+        "additionalOptions": {},
+    },
+    "nodeTypeAndVersion": {
+        "name": "CUSTOM.chutes",
+        "version": 1,
+    },
+    "methodName": "getImageChutes",
+    "path": "chuteUrl",
+}))
+PY
+)"
+
+    curl_edge -sk -b "$cookie_file" \
+        -H 'Content-Type: application/json' \
+        -H "browser-id: ${browser_id}" \
+        -d "$payload" \
+        "https://${N8N_HOST}/rest/dynamic-node-parameters/options"
+}
+
 if [ -f "$PROJECT_DIR/.env" ]; then
     cp "$PROJECT_DIR/.env" "$ENV_BACKUP"
     ORIGINAL_ENV_PRESENT=true
@@ -316,6 +377,7 @@ compose down -v --remove-orphans >/dev/null 2>&1 || true
 
 export INSTALL_MODE="local"
 export CHUTES_COMPOSE_FILES="$COMPOSE_FILES"
+export CHUTES_TRAFFIC_MODE="$E2E_TRAFFIC_MODE"
 export N8N_HOST="e2ee-local-proxy.chutes.dev"
 export CHUTES_OAUTH_CLIENT_ID="test-chutes-client"
 export CHUTES_OAUTH_CLIENT_SECRET='test secret with spaces $ and # and "quotes"'

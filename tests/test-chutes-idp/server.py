@@ -16,6 +16,28 @@ USERS = {
     "member-code": {"sub": "sub-member", "username": "member-user", "created_at": "2026-01-01T00:00:00Z"},
     "admin-code": {"sub": "sub-admin", "username": "admin-user", "created_at": "2026-01-02T00:00:00Z"},
 }
+CHUTES = [
+    {
+        "chute_id": "chute-llm-1",
+        "name": "DeepSeek V3",
+        "tagline": "Fast text generation",
+        "description": "Local test LLM chute",
+        "slug": "llm-member",
+        "standard_template": "vllm",
+        "user": {"username": "member-user"},
+        "public": True,
+    },
+    {
+        "chute_id": "chute-image-1",
+        "name": "Qwen Image Edit",
+        "tagline": "Image generation and editing",
+        "description": "Local test image chute",
+        "slug": "image-member",
+        "standard_template": "diffusion",
+        "user": {"username": "member-user"},
+        "public": True,
+    },
+]
 
 
 def extract_code_from_access_token(token):
@@ -116,10 +138,69 @@ class Handler(BaseHTTPRequestHandler):
                 },
             )
 
+        if parsed.path == "/chutes/":
+            authorization = self.headers.get("Authorization", "")
+            token = authorization.removeprefix("Bearer ").strip()
+            code = extract_code_from_access_token(token)
+            if code not in USERS:
+                return self.json_response(401, {"error": "invalid_token"})
+
+            include_public = query.get("include_public", ["true"])[0].lower() == "true"
+            limit = int(query.get("limit", ["500"])[0] or "500")
+            items = [item for item in CHUTES if include_public or not item.get("public", False)]
+            return self.json_response(
+                200,
+                {
+                    "total": len(items),
+                    "page": 1,
+                    "limit": limit,
+                    "items": items[:limit],
+                    "cord_refs": {},
+                },
+            )
+
         return self.json_response(404, {"error": "not_found"})
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
+
+        if parsed.path == "/v1/chat/completions":
+            authorization = self.headers.get("Authorization", "")
+            token = authorization.removeprefix("Bearer ").strip()
+            code = extract_code_from_access_token(token)
+            if code not in USERS:
+                return self.json_response(401, {"error": "invalid_token"})
+
+            length = int(self.headers.get("Content-Length", "0"))
+            raw_body = self.rfile.read(length).decode("utf-8")
+            try:
+                payload = json.loads(raw_body or "{}")
+            except json.JSONDecodeError:
+                payload = {}
+
+            user_prompt = ""
+            for message in payload.get("messages", []):
+                if message.get("role") == "user":
+                    user_prompt = message.get("content", "")
+                    break
+
+            return self.json_response(
+                200,
+                {
+                    "id": "chatcmpl-test",
+                    "object": "chat.completion",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": f"hello from test chute: {user_prompt}".strip(),
+                            },
+                            "finish_reason": "stop",
+                        }
+                    ],
+                },
+            )
 
         if parsed.path != "/idp/token":
             return self.json_response(404, {"error": "not_found"})

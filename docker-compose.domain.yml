@@ -16,7 +16,10 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    networks: [n8n-net]
+    networks:
+      n8n-net:
+        aliases:
+          - ${N8N_HOST}
     restart: unless-stopped
 
 volumes:
