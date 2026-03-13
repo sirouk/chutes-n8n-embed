@@ -108,7 +108,7 @@ curl_edge() {
 
 echo "=== Syntax checks ==="
 
-for file in "$PROJECT_DIR/install.sh" "$PROJECT_DIR/bootstrap.sh" "$PROJECT_DIR/scripts/"*.sh; do
+for file in "$PROJECT_DIR/deploy.sh" "$PROJECT_DIR/scripts/"*.sh; do
     if bash -n "$file" >/dev/null 2>&1; then
         pass "bash -n $(basename "$file")"
     else
@@ -117,7 +117,7 @@ for file in "$PROJECT_DIR/install.sh" "$PROJECT_DIR/bootstrap.sh" "$PROJECT_DIR/
 done
 
 if command -v shellcheck >/dev/null 2>&1; then
-    if shellcheck -x "$PROJECT_DIR/install.sh" "$PROJECT_DIR/bootstrap.sh" "$PROJECT_DIR/scripts/"*.sh >/dev/null 2>&1; then
+    if shellcheck -x "$PROJECT_DIR/deploy.sh" "$PROJECT_DIR/scripts/"*.sh >/dev/null 2>&1; then
         pass "shellcheck shell scripts"
     else
         fail "shellcheck shell scripts"
@@ -193,7 +193,7 @@ echo
 echo "=== Runtime checks ==="
 
 if [ ! -f "$PROJECT_DIR/.env" ]; then
-    fail ".env missing - run bootstrap.sh first"
+    fail ".env missing - run deploy.sh first"
     echo
     echo "=== Results: $PASS passed, $FAIL failed, $SKIP skipped ==="
     exit 1

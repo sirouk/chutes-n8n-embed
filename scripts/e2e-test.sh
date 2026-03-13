@@ -41,7 +41,7 @@ curl_edge() {
 
 cleanup() {
     set +e
-    CHUTES_COMPOSE_FILES="$COMPOSE_FILES" "$PROJECT_DIR/bootstrap.sh" --down >/dev/null 2>&1 || true
+    CHUTES_COMPOSE_FILES="$COMPOSE_FILES" "$PROJECT_DIR/deploy.sh" --down >/dev/null 2>&1 || true
     compose down -v --remove-orphans >/dev/null 2>&1 || true
 
     if [ "$ORIGINAL_ENV_PRESENT" = true ]; then
@@ -323,7 +323,7 @@ export CHUTES_IDP_BASE_URL="http://test-chutes-idp:8080"
 export CHUTES_ADMIN_USERNAMES="admin-user"
 export CHUTES_API_KEY="cpk_test_e2e.0123456789abcdef.abcdef0123456789"
 
-"$PROJECT_DIR/bootstrap.sh" --force-all
+"$PROJECT_DIR/deploy.sh" --force-all
 load_env
 
 original_owner_password="$N8N_ADMIN_PASSWORD"
@@ -332,7 +332,7 @@ original_postgres_password="$POSTGRES_PASSWORD"
 
 owner_response="$(owner_login)"
 if [[ "$owner_response" != *'"id"'* ]]; then
-    echo "FAIL: break-glass owner login failed after bootstrap" >&2
+    echo "FAIL: break-glass owner login failed after deploy" >&2
     echo "$owner_response" >&2
     exit 1
 fi
@@ -394,10 +394,10 @@ fi
 
 assert_eq "$(user_role_for_subject "sub-admin")" "global:admin" "allowlisted SSO user should be promoted to global:admin"
 assert_eq "$(managed_credential_count_for_subject "sub-admin")" "1" "admin SSO login should create exactly one managed Chutes credential"
-assert_eq "$(credential_count)" "1" "bootstrap should import exactly one Chutes API credential"
-assert_eq "$(workflow_count)" "2" "bootstrap should import the two starter workflows exactly once"
+assert_eq "$(credential_count)" "1" "deploy should import exactly one Chutes API credential"
+assert_eq "$(workflow_count)" "2" "deploy should import the two starter workflows exactly once"
 
-"$PROJECT_DIR/bootstrap.sh" --force
+"$PROJECT_DIR/deploy.sh" --force
 load_env
 
 assert_eq "$N8N_ADMIN_PASSWORD" "$original_owner_password" "--force must preserve the break-glass owner password"
@@ -418,4 +418,4 @@ assert_eq "$(workflow_count)" "2" "--force must not duplicate starter workflows"
 
 "$SCRIPT_DIR/smoke-test.sh"
 
-echo "E2E PASS: native Chutes SSO, local e2ee-proxy TLS, bootstrap idempotency, and custom nodes validated."
+echo "E2E PASS: native Chutes SSO, local e2ee-proxy TLS, deploy idempotency, and custom nodes validated."

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Post-startup n8n configuration: owner bootstrap/reset, credentials, workflows.
+# Post-startup n8n configuration: owner setup/reset, credentials, workflows.
 #
 set -euo pipefail
 

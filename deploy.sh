@@ -1,24 +1,114 @@
 #!/usr/bin/env bash
 #
-# chutes-n8n-local bootstrap
+# chutes-n8n-local deploy
 #
 # Deployment entry point:
+# - clones or refreshes the repo when launched outside an existing checkout
 # - prompts for local vs domain deployment
 # - captures the Chutes OAuth client credentials required for native SSO
 # - renders the correct edge config (Caddy for public domains, e2ee-proxy for local)
 # - builds the pinned n8n image with Chutes SSO overlay
 # - boots postgres + n8n + the selected edge
-# - bootstraps the break-glass owner account
+# - provisions the break-glass owner account
 #
 # Usage:
-#   ./bootstrap.sh
-#   ./bootstrap.sh --force
-#   ./bootstrap.sh --wipe
-#   ./bootstrap.sh --reset-owner-password
-#   ./bootstrap.sh --force-all
-#   ./bootstrap.sh --down
+#   ./deploy.sh
+#   ./deploy.sh --force
+#   ./deploy.sh --wipe
+#   ./deploy.sh --reset-owner-password
+#   ./deploy.sh --force-all
+#   ./deploy.sh --down
 #
 set -euo pipefail
+
+REPO_REF="${CHUTES_N8N_LOCAL_GIT_REF:-${CHUTES_N8N_EMBED_GIT_REF:-main}}"
+REPO_URL="${CHUTES_N8N_LOCAL_GIT_URL:-${CHUTES_N8N_EMBED_GIT_URL:-https://github.com/chutesai/chutes-n8n-local.git}}"
+INSTALL_DIR="${CHUTES_N8N_LOCAL_DIR:-${CHUTES_N8N_EMBED_DIR:-$HOME/chutes-n8n-local}}"
+SCRIPT_SOURCE="${BASH_SOURCE[0]:-$0}"
+RUNNING_FROM_STDIN=false
+
+case "$SCRIPT_SOURCE" in
+    /dev/fd/*|/proc/self/fd/*|-|bash|-bash)
+        RUNNING_FROM_STDIN=true
+        ;;
+esac
+
+if SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_SOURCE")" >/dev/null 2>&1 && pwd)"; then
+    :
+else
+    SCRIPT_DIR="$(pwd)"
+fi
+
+log() {
+    printf '[deploy] %s\n' "$1"
+}
+
+in_repo_checkout() {
+    [ "$RUNNING_FROM_STDIN" != true ] || return 1
+    [ -f "$SCRIPT_DIR/docker-compose.yml" ] &&
+    [ -f "$SCRIPT_DIR/Dockerfile.n8n" ] &&
+    [ -d "$SCRIPT_DIR/scripts" ]
+}
+
+require_clone_cmd() {
+    command -v "$1" >/dev/null 2>&1 || {
+        echo "$1 is required." >&2
+        exit 1
+    }
+}
+
+checkout_repo() {
+    if [ -d "$INSTALL_DIR/.git" ]; then
+        local dirty branch upstream
+
+        dirty="$(git -C "$INSTALL_DIR" status --porcelain --untracked-files=no 2>/dev/null || true)"
+        if [ -n "$dirty" ]; then
+            log "existing checkout has local tracked changes; using it as-is"
+            return
+        fi
+
+        branch="$(git -C "$INSTALL_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)"
+        upstream="$(git -C "$INSTALL_DIR" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
+
+        log "refreshing existing checkout in $INSTALL_DIR"
+        git -C "$INSTALL_DIR" fetch --quiet origin || true
+        git -C "$INSTALL_DIR" checkout "$REPO_REF" >/dev/null 2>&1 || true
+        if [ -n "$upstream" ]; then
+            git -C "$INSTALL_DIR" pull --ff-only --quiet || true
+        elif [ "$branch" = "$REPO_REF" ]; then
+            git -C "$INSTALL_DIR" pull --ff-only --quiet origin "$REPO_REF" || true
+        fi
+        return
+    fi
+
+    if [ -e "$INSTALL_DIR" ] && [ ! -d "$INSTALL_DIR/.git" ]; then
+        echo "Install dir exists and is not a git checkout: $INSTALL_DIR" >&2
+        exit 1
+    fi
+
+    mkdir -p "$(dirname "$INSTALL_DIR")"
+    log "cloning $REPO_URL into $INSTALL_DIR"
+    if git clone --depth 1 --branch "$REPO_REF" "$REPO_URL" "$INSTALL_DIR" >/dev/null 2>&1; then
+        return
+    fi
+
+    log "shallow clone failed, retrying full checkout"
+    rm -rf "$INSTALL_DIR"
+    git clone "$REPO_URL" "$INSTALL_DIR" >/dev/null 2>&1
+    git -C "$INSTALL_DIR" checkout "$REPO_REF" >/dev/null 2>&1
+}
+
+if ! in_repo_checkout; then
+    require_clone_cmd git
+    checkout_repo
+    cd "$INSTALL_DIR"
+    chmod +x ./deploy.sh
+    log "running deploy from $INSTALL_DIR"
+    if [ "$RUNNING_FROM_STDIN" = true ] && [ ! -t 0 ]; then
+        cat >/dev/null || true
+    fi
+    exec ./deploy.sh "$@"
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="$SCRIPT_DIR/.env"
@@ -31,10 +121,14 @@ FORCE_ALL=false
 RESET_OWNER_PASSWORD=false
 DOWN=false
 INTERACTIVE=false
+TTY_DEVICE=""
 INSTALL_ACTION="${INSTALL_ACTION:-}"
 EXISTING_INSTALL=false
 
-if [ -t 0 ] && [ -t 1 ]; then
+if [ -t 1 ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
+    TTY_DEVICE="/dev/tty"
+    INTERACTIVE=true
+elif [ -t 0 ] && [ -t 1 ]; then
     INTERACTIVE=true
 fi
 
@@ -59,6 +153,37 @@ info()  { echo -e "${CYAN}[*]${NC} $*"; }
 ok()    { echo -e "${GREEN}[+]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[!]${NC} $*"; }
 err()   { echo -e "${RED}[x]${NC} $*" >&2; }
+
+read_interactive_value() {
+    local var_name="$1"
+    local prompt="$2"
+    local secret="${3:-false}"
+    local value=""
+
+    if [ "$INTERACTIVE" != true ]; then
+        err "$var_name must be set in non-interactive mode"
+        exit 1
+    fi
+
+    if [ -n "$TTY_DEVICE" ]; then
+        printf '%s' "$prompt" > "$TTY_DEVICE"
+        if [ "$secret" = true ]; then
+            IFS= read -r -s value < "$TTY_DEVICE"
+            printf '\n' > "$TTY_DEVICE"
+        else
+            IFS= read -r value < "$TTY_DEVICE"
+        fi
+    else
+        if [ "$secret" = true ]; then
+            read -rsp "$prompt" value
+            echo
+        else
+            read -rp "$prompt" value
+        fi
+    fi
+
+    printf -v "$var_name" '%s' "$value"
+}
 
 compose_files_default() {
     case "$1" in
@@ -217,7 +342,7 @@ existing_install_detected() {
 
 write_env_file() {
     {
-        echo "# Auto-generated by bootstrap.sh — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "# Auto-generated by deploy.sh — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
         echo
         env_line INSTALL_MODE "$INSTALL_MODE"
         env_line CHUTES_COMPOSE_FILES "$CHUTES_COMPOSE_FILES"
@@ -455,11 +580,7 @@ prompt_install_action() {
         return
     fi
 
-    echo
-    echo "  Existing chutes-n8n-local instance detected."
-    echo "    update - rebuild and refresh in place while preserving postgres and n8n data"
-    echo "    wipe   - remove containers, volumes, and data secrets, then recreate from scratch"
-    read -rp "  Choose action [update/wipe] (default: update): " answer
+    read_interactive_value answer "Existing install found. Action [update/wipe] (default: update): "
 
     case "${answer:-update}" in
         update|UPDATE|Update|u|U) INSTALL_ACTION="update" ;;
@@ -584,10 +705,7 @@ prompt_install_mode() {
         exit 1
     fi
 
-    echo "  Install mode:"
-    echo "    local  - ${LOCAL_HOSTNAME} with the embedded e2ee-proxy certificate"
-    echo "    domain - your public domain with Let's Encrypt via Caddy"
-    read -rp "  Choose install mode [local/domain] (default: local): " answer
+    read_interactive_value answer "Install mode [local/domain] (default: local): "
 
     case "${answer:-local}" in
         local|LOCAL|Local|l|L) INSTALL_MODE="local" ;;
@@ -609,17 +727,7 @@ prompt_required_value() {
         return
     fi
 
-    if [ "$INTERACTIVE" != true ]; then
-        err "$var_name must be set in non-interactive mode"
-        exit 1
-    fi
-
-    if [ "$secret" = true ]; then
-        read -rsp "  ${prompt}: " current
-        echo
-    else
-        read -rp "  ${prompt}: " current
-    fi
+    read_interactive_value current "  ${prompt}: " "$secret"
 
     if [ -z "$current" ]; then
         err "$var_name must not be empty"
@@ -632,7 +740,7 @@ prompt_required_value() {
 ensure_real_chutes_oauth_credentials() {
     if [ "${BOOTSTRAP_OVERRIDE_SET_CHUTES_IDP_BASE_URL:-false}" != "true" ] && \
         is_test_idp_base_url "${CHUTES_IDP_BASE_URL:-}"; then
-        warn "Ignoring test-only CHUTES_IDP_BASE_URL=${CHUTES_IDP_BASE_URL} for a real bootstrap run"
+        warn "Ignoring test-only CHUTES_IDP_BASE_URL=${CHUTES_IDP_BASE_URL} for a real deploy run"
         CHUTES_IDP_BASE_URL="https://api.chutes.ai"
         CHUTES_OAUTH_CLIENT_ID=""
         CHUTES_OAUTH_CLIENT_SECRET=""
@@ -770,7 +878,7 @@ if [ "$INSTALL_MODE" = "local" ]; then
     fi
 else
     if [ -z "${N8N_HOST:-}" ] && [ "$INTERACTIVE" = true ]; then
-        read -rp "  Public n8n hostname: " N8N_HOST
+        read_interactive_value N8N_HOST "  Public n8n hostname: "
     fi
 
     if is_placeholder_email "${ACME_EMAIL:-}"; then
@@ -897,7 +1005,7 @@ node "$SCRIPT_DIR/scripts/patch-n8n-nodes-chutes.mjs" "$BUILD_DIR"
 ok "Custom node build context is ready"
 
 if [ "$FORCE_ALL" = true ]; then
-    info "Removing existing docker volumes for a clean re-bootstrap ..."
+    info "Removing existing docker volumes for a clean redeploy ..."
     compose down -v --remove-orphans || true
 elif [ "$EXISTING_INSTALL" = true ] && [ "$INSTALL_ACTION" = "update" ]; then
     info "Stopping the existing stack for a clean in-place rebuild ..."
@@ -976,7 +1084,7 @@ if [ "$OWNER_PASSWORD_VALID" = true ]; then
     echo -e "    Password: ${BOLD}${N8N_ADMIN_PASSWORD}${NC}"
 else
     warn "Stored owner credentials could not be verified."
-    warn "Run ./bootstrap.sh --reset-owner-password to rotate the break-glass owner password."
+    warn "Run ./deploy.sh --reset-owner-password to rotate the break-glass owner password."
 fi
 echo
 echo "  Commands:"

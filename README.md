@@ -9,15 +9,27 @@ Build workflows with Chutes-native auth, multi-modal capabilities, and node inte
 macOS/Linux/WSL:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/chutesai/chutes-n8n-local/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/chutesai/chutes-n8n-local/main/deploy.sh | bash
 ```
 
-The installer:
+The deploy script:
 
 - clones or refreshes `chutesai/chutes-n8n-local`
-- runs `bootstrap.sh`
+- runs `deploy.sh`
 - auto-clones `chutesai/n8n-nodes-chutes` beside it if missing
 - fast-forwards `n8n-nodes-chutes` on clean reruns so the embedded nodes do not drift stale
+
+When launched from a terminal, the deploy script prompts for install mode and the required Chutes OAuth settings even when invoked via `curl ... | bash`.
+
+For headless or CI usage, preseed the required environment variables:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/chutesai/chutes-n8n-local/main/deploy.sh | \
+  INSTALL_MODE=local \
+  CHUTES_OAUTH_CLIENT_ID=... \
+  CHUTES_OAUTH_CLIENT_SECRET=... \
+  bash
+```
 
 ## Manual Clone
 
@@ -25,10 +37,10 @@ The installer:
 ```bash
 git clone https://github.com/chutesai/chutes-n8n-local.git
 cd chutes-n8n-local
-./bootstrap.sh
+./deploy.sh
 ```
 
-If `../n8n-nodes-chutes` is missing, bootstrap will clone:
+If `../n8n-nodes-chutes` is missing, deploy will clone:
 
 ```text
 https://github.com/chutesai/n8n-nodes-chutes.git
@@ -37,20 +49,20 @@ https://github.com/chutesai/n8n-nodes-chutes.git
 You can override that source if needed (fork) with:
 
 ```bash
-CHUTES_N8N_NODES_GIT_URL=git@github.com:chutesai/n8n-nodes-chutes.git ./bootstrap.sh
+CHUTES_N8N_NODES_GIT_URL=git@github.com:chutesai/n8n-nodes-chutes.git ./deploy.sh
 ```
 
-## Bootstrap
+## Deploy
 
 ```bash
-./bootstrap.sh
-./bootstrap.sh --force
-./bootstrap.sh --wipe
-./bootstrap.sh --reset-owner-password
-./bootstrap.sh --down
+./deploy.sh
+./deploy.sh --force
+./deploy.sh --wipe
+./deploy.sh --reset-owner-password
+./deploy.sh --down
 ```
 
-Bootstrap asks for:
+Deploy asks for, when a terminal is attached:
 
 - install mode: `local` or `domain`
 - existing-install action: `update` or `wipe`
@@ -67,7 +79,7 @@ Existing install behavior:
 - `update` is the default and preserves Postgres and n8n data volumes
 - `wipe` removes containers, volumes, and encrypted n8n state, then recreates everything cleanly
 
-## What Bootstrap Builds
+## What Deploy Builds
 
 - Community n8n with native Chutes SSO
 - baked-in `n8n-nodes-chutes`
@@ -91,12 +103,11 @@ CI runs syntax smoke checks plus the local test-IdP end-to-end path.
 
 ## Repo Layout
 
-- `install.sh`: one-line bootstrap entrypoint used by the raw GitHub quick start
-- `bootstrap.sh`: main install and update entrypoint
+- `deploy.sh`: consolidated quick-start, install, and update entrypoint
 - `docker-compose*.yml`: base, local, domain, and test stacks
 - `Dockerfile.n8n`: pinned n8n build with SSO overlays and bundled Chutes nodes
 - `n8n-overlays/`: native n8n backend and UI changes
-- `scripts/`: bootstrap helpers, smoke tests, and E2E coverage
+- `scripts/`: deploy helpers, smoke tests, and E2E coverage
 - `tests/test-chutes-idp/`: local test IdP for CI and destructive local E2E
 
 ## Licensing Note
