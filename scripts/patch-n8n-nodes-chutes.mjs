@@ -1,7 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const buildDir = process.argv[2];
+const overlayRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 if (!buildDir) {
 	console.error('Usage: node patch-n8n-nodes-chutes.mjs <build-dir>');
@@ -29,6 +31,19 @@ const RESOURCE_PLACEHOLDER_VALUE = '__choose_resource_type__';
 function patchCredentialTestBaseUrl() {
 	const credentialFile = path.join(buildDir, 'credentials', 'ChutesApi.credentials.ts');
 	let source = fs.readFileSync(credentialFile, 'utf8');
+
+	const credentialOverlayFile = path.join(
+		overlayRoot,
+		'n8n-overlays',
+		'n8n-nodes-chutes',
+		'credentials',
+		'ChutesApi.credentials.ts',
+	);
+
+	if (!source.includes('FORCE_REFRESH_FLAG')) {
+		fs.copyFileSync(credentialOverlayFile, credentialFile);
+		return;
+	}
 
 	if (!source.includes('CHUTES_CREDENTIAL_TEST_BASE_URL')) {
 		const helperFunction = `function getCredentialTestBaseUrl(): string {
