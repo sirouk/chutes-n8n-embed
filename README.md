@@ -6,7 +6,7 @@ Build workflows with Chutes-native auth, multi-modal capabilities, and node inte
 
 ## Quick Start
 
-macOS/Linux:
+macOS/Linux/WSL:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/chutesai/chutes-n8n-local/main/install.sh | bash
