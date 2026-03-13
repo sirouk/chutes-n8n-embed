@@ -324,6 +324,31 @@ patch('packages/cli/src/services/frontend.service.ts', (content) => {
 	return updated;
 });
 
+patch(
+	`${editorRoot}/features/shared/nodeCreator/composables/useActionsGeneration.ts`,
+	(content) =>
+		replaceOnce(
+			content,
+			`function resourceCategories(nodeTypeDescription: INodeTypeDescription): ActionTypeDescription[] {
+	const transformedNodes: ActionTypeDescription[] = [];
+	const matchedProperties = nodeTypeDescription.properties.filter(
+		(property) => property.name === 'resource',
+	);
+`,
+			`function resourceCategories(nodeTypeDescription: INodeTypeDescription): ActionTypeDescription[] {
+	if (nodeTypeDescription.name === 'CUSTOM.chutes') {
+		return [];
+	}
+
+	const transformedNodes: ActionTypeDescription[] = [];
+	const matchedProperties = nodeTypeDescription.properties.filter(
+		(property) => property.name === 'resource',
+	);
+`,
+			`${editorRoot}/features/shared/nodeCreator/composables/useActionsGeneration.ts`,
+		),
+);
+
 patch('packages/cli/src/services/user.service.ts', (content) =>
 	replaceOnce(
 		content,
