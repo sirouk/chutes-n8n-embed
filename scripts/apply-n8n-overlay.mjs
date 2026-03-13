@@ -446,7 +446,14 @@ patch('packages/cli/src/credentials-helper.ts', (content) =>
 					isTestingCredentials ||
 					credentialsExpiringSoon
 				) {
-					const output = await credentialType.preAuthentication.call(helpers, credentials);
+					const preAuthenticationCredentials =
+						credentialsExpired === true
+							? Object.assign({}, credentials, { __n8nForceCredentialRefresh: true })
+							: credentials;
+					const output = await credentialType.preAuthentication.call(
+						helpers,
+						preAuthenticationCredentials,
+					);
 
 					if (output[expirableProperty.name] === undefined) {
 						return undefined;
@@ -541,7 +548,7 @@ import { CredentialsHelper } from '@/credentials-helper';`,
 						},
 					},
 				},
-				false,
+				true,
 			);
 
 			if (refreshedCredentials) {

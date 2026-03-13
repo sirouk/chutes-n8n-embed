@@ -8,6 +8,10 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 CLIENT_ID = os.environ.get("TEST_CHUTES_CLIENT_ID", "test-client")
 CLIENT_SECRET = os.environ.get("TEST_CHUTES_CLIENT_SECRET", "test secret")
+GRANTED_SCOPE = os.environ.get(
+    "TEST_CHUTES_GRANTED_SCOPE",
+    "openid profile chutes:read chutes:invoke",
+)
 USERS = {
     "member-code": {"sub": "sub-member", "username": "member-user", "created_at": "2026-01-01T00:00:00Z"},
     "admin-code": {"sub": "sub-admin", "username": "admin-user", "created_at": "2026-01-02T00:00:00Z"},
@@ -141,6 +145,7 @@ class Handler(BaseHTTPRequestHandler):
                     "refresh_token": f"refresh:{code}:0",
                     "token_type": "Bearer",
                     "expires_in": 3600,
+                    "scope": GRANTED_SCOPE,
                 },
             )
 
@@ -156,6 +161,7 @@ class Handler(BaseHTTPRequestHandler):
                     "refresh_token": f"refresh:{code}:{generation + 1}",
                     "token_type": "Bearer",
                     "expires_in": 3600,
+                    "scope": GRANTED_SCOPE,
                 },
             )
 

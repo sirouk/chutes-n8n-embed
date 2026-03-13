@@ -147,10 +147,11 @@ complete_sso_login() {
     local cookie_file="$2"
     local headers_file="$3"
     local callback_headers="$4"
+    local browser_id="$5"
     local location state
 
     curl_edge -sk -o /dev/null -D "$headers_file" -c "$cookie_file" \
-        -H 'browser-id: e2e-sso-browser' \
+        -H "browser-id: ${browser_id}" \
         "https://${N8N_HOST}/rest/sso/chutes/login?redirect=/workflows"
 
     location="$(extract_location "$headers_file")"
@@ -165,12 +166,13 @@ complete_sso_login() {
     assert_nonempty "$state" "missing SSO state"
 
     curl_edge -sk -o /dev/null -D "$callback_headers" -b "$cookie_file" -c "$cookie_file" \
+        -H "browser-id: ${browser_id}" \
         "https://${N8N_HOST}/rest/sso/chutes/callback?code=${code}&state=${state}"
 }
 
 user_role_for_subject() {
     local subject="$1"
-    query_scalar "SELECT u.role FROM auth_identity ai JOIN \"user\" u ON u.id = ai.\"userId\" WHERE ai.\"providerType\" = 'chutes' AND ai.\"providerId\" = '$(printf "%s" "$subject" | sed "s/'/''/g")';"
+    query_scalar "SELECT u.\"roleSlug\" FROM auth_identity ai JOIN \"user\" u ON u.id = ai.\"userId\" WHERE ai.\"providerType\" = 'chutes' AND ai.\"providerId\" = '$(printf "%s" "$subject" | sed "s/'/''/g")';"
 }
 
 user_count_for_subject() {
@@ -365,7 +367,7 @@ fi
 member_cookie="$COOKIE_DIR/member.cookies"
 member_headers="$COOKIE_DIR/member.headers"
 member_callback_headers="$COOKIE_DIR/member.callback.headers"
-complete_sso_login "member-code" "$member_cookie" "$member_headers" "$member_callback_headers"
+complete_sso_login "member-code" "$member_cookie" "$member_headers" "$member_callback_headers" "e2e-member-browser"
 
 member_session_check="$(authenticated_node_types "$member_cookie" "e2e-member-browser")"
 if [[ "$member_session_check" != *'"displayName":"Chutes"'* ]]; then
@@ -400,14 +402,14 @@ assert_eq "$member_session_after" "token:member-code:refresh:1" "credential test
 member_cookie_2="$COOKIE_DIR/member-repeat.cookies"
 member_headers_2="$COOKIE_DIR/member-repeat.headers"
 member_callback_headers_2="$COOKIE_DIR/member-repeat.callback.headers"
-complete_sso_login "member-code" "$member_cookie_2" "$member_headers_2" "$member_callback_headers_2"
+complete_sso_login "member-code" "$member_cookie_2" "$member_headers_2" "$member_callback_headers_2" "e2e-member-browser"
 assert_eq "$(user_count_for_subject "sub-member")" "1" "repeat member SSO login should reuse the same identity"
 assert_eq "$(managed_credential_count_for_subject "sub-member")" "1" "repeat member SSO login should reuse the same managed Chutes credential"
 
 admin_cookie="$COOKIE_DIR/admin.cookies"
 admin_headers="$COOKIE_DIR/admin.headers"
 admin_callback_headers="$COOKIE_DIR/admin.callback.headers"
-complete_sso_login "admin-code" "$admin_cookie" "$admin_headers" "$admin_callback_headers"
+complete_sso_login "admin-code" "$admin_cookie" "$admin_headers" "$admin_callback_headers" "e2e-admin-browser"
 
 admin_session_check="$(authenticated_node_types "$admin_cookie" "e2e-admin-browser")"
 if [[ "$admin_session_check" != *'"displayName":"Chutes"'* ]]; then
