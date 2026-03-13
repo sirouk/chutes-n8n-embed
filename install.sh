@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_REF="${CHUTES_N8N_EMBED_GIT_REF:-main}"
-REPO_URL="${CHUTES_N8N_EMBED_GIT_URL:-https://github.com/chutesai/chutes-n8n-embed.git}"
-INSTALL_DIR="${CHUTES_N8N_EMBED_DIR:-$HOME/chutes-n8n-embed}"
+REPO_REF="${CHUTES_N8N_LOCAL_GIT_REF:-${CHUTES_N8N_EMBED_GIT_REF:-main}}"
+REPO_URL="${CHUTES_N8N_LOCAL_GIT_URL:-${CHUTES_N8N_EMBED_GIT_URL:-https://github.com/chutesai/chutes-n8n-local.git}}"
+INSTALL_DIR="${CHUTES_N8N_LOCAL_DIR:-${CHUTES_N8N_EMBED_DIR:-$HOME/chutes-n8n-local}}"
 
 log() {
   printf '[install] %s\n' "$1"

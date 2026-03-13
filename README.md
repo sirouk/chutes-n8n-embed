@@ -1,4 +1,4 @@
-# chutes-n8n-embed
+# chutes-n8n-local
 
 Self-hosted n8n with native `Sign in with Chutes`, bundled `n8n-nodes-chutes`, local `e2ee-local-proxy.chutes.dev` mode, and public-domain mode with ACME.
 
@@ -7,12 +7,12 @@ Self-hosted n8n with native `Sign in with Chutes`, bundled `n8n-nodes-chutes`, l
 macOS/Linux:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/chutesai/chutes-n8n-embed/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/chutesai/chutes-n8n-local/main/install.sh | bash
 ```
 
 The installer:
 
-- clones or refreshes `chutesai/chutes-n8n-embed`
+- clones or refreshes `chutesai/chutes-n8n-local`
 - runs `bootstrap.sh`
 - auto-clones `chutesai/n8n-nodes-chutes` beside it if missing
 - fast-forwards `n8n-nodes-chutes` on clean reruns so the embedded nodes do not drift stale
@@ -22,16 +22,16 @@ The installer:
 HTTPS:
 
 ```bash
-git clone https://github.com/chutesai/chutes-n8n-embed.git
-cd chutes-n8n-embed
+git clone https://github.com/chutesai/chutes-n8n-local.git
+cd chutes-n8n-local
 ./bootstrap.sh
 ```
 
 SSH:
 
 ```bash
-git clone git@github.com:chutesai/chutes-n8n-embed.git
-cd chutes-n8n-embed
+git clone git@github.com:chutesai/chutes-n8n-local.git
+cd chutes-n8n-local
 ./bootstrap.sh
 ```
 

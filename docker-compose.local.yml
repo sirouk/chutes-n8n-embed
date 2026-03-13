@@ -1,6 +1,6 @@
 services:
   local-proxy:
-    image: chutes-n8n-embed-local-proxy:latest
+    image: chutes-n8n-local-local-proxy:latest
     platform: linux/amd64
     build:
       context: .

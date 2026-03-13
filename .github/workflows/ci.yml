@@ -17,7 +17,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: Checkout chutes-n8n-embed
+      - name: Checkout chutes-n8n-local
         uses: actions/checkout@v6
 
       - name: Set up Node.js
@@ -40,10 +40,10 @@ jobs:
     needs: syntax-smoke
 
     steps:
-      - name: Checkout chutes-n8n-embed
+      - name: Checkout chutes-n8n-local
         uses: actions/checkout@v6
         with:
-          path: chutes-n8n-embed
+          path: chutes-n8n-local
 
       - name: Checkout n8n-nodes-chutes
         uses: actions/checkout@v6
@@ -57,5 +57,5 @@ jobs:
           node-version: "20"
 
       - name: Run destructive test-IdP E2E
-        working-directory: chutes-n8n-embed
+        working-directory: chutes-n8n-local
         run: ./scripts/e2e-test.sh

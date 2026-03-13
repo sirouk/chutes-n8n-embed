@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Smoke tests for chutes-n8n-embed.
+# Smoke tests for chutes-n8n-local.
 #
 set -euo pipefail
 
@@ -352,7 +352,7 @@ else
     fail "HTTP did not redirect to HTTPS (status $http_status)"
 fi
 
-owner_login="$(curl_edge -sk -c /tmp/chutes-n8n-embed.cookies \
+owner_login="$(curl_edge -sk -c /tmp/chutes-n8n-local.cookies \
     -H 'Content-Type: application/json' \
     -H 'browser-id: smoke-test-browser' \
     -d "$(printf '{"emailOrLdapLoginId":"%s","password":"%s"}' "$N8N_ADMIN_EMAIL" "$N8N_ADMIN_PASSWORD")" \
@@ -382,7 +382,7 @@ else
     fail "custom nodes are not registered in n8n"
 fi
 
-credentials_response="$(curl_edge -sk -b /tmp/chutes-n8n-embed.cookies \
+credentials_response="$(curl_edge -sk -b /tmp/chutes-n8n-local.cookies \
     -H 'browser-id: smoke-test-browser' \
     "https://${N8N_HOST}/rest/credentials" 2>/dev/null || true)"
 
@@ -412,7 +412,7 @@ if command -v jq >/dev/null 2>&1; then
             methodName: "getImageChutes",
             path: "chuteUrl"
         }')"
-        dynamic_options_response="$(curl_edge -sk -b /tmp/chutes-n8n-embed.cookies \
+        dynamic_options_response="$(curl_edge -sk -b /tmp/chutes-n8n-local.cookies \
             -H 'Content-Type: application/json' \
             -H 'browser-id: smoke-test-browser' \
             -d "$dynamic_payload" \
@@ -430,7 +430,7 @@ else
     skip "jq not installed - cannot validate Chutes SSO option loading"
 fi
 
-rm -f /tmp/chutes-n8n-embed.cookies
+rm -f /tmp/chutes-n8n-local.cookies
 
 echo
 echo "=== Results: $PASS passed, $FAIL failed, $SKIP skipped ==="

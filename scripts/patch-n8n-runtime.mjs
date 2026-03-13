@@ -8,5 +8,5 @@ if (!compiledRoot) {
 }
 
 console.log(
-	`No runtime patch required for ${compiledRoot}; chutes-n8n-embed now applies its n8n customizations at the source layer.`,
+	`No runtime patch required for ${compiledRoot}; chutes-n8n-local now applies its n8n customizations at the source layer.`,
 );

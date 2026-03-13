@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# chutes-n8n-embed bootstrap
+# chutes-n8n-local bootstrap
 #
 # Deployment entry point:
 # - prompts for local vs domain deployment
@@ -368,6 +368,26 @@ is_placeholder_email() {
     esac
 }
 
+is_test_idp_base_url() {
+    case "$1" in
+        "" )
+            return 1
+            ;;
+        http://test-chutes-idp:8080|https://test-chutes-idp:8080)
+            return 0
+            ;;
+        http://localhost:*|https://localhost:*|http://127.0.0.1:*|https://127.0.0.1:*)
+            return 0
+            ;;
+        *test-chutes-idp*|*.invalid*)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 validate_domain_hostname() {
     local host="$1"
 
@@ -436,7 +456,7 @@ prompt_install_action() {
     fi
 
     echo
-    echo "  Existing chutes-n8n-embed instance detected."
+    echo "  Existing chutes-n8n-local instance detected."
     echo "    update - rebuild and refresh in place while preserving postgres and n8n data"
     echo "    wipe   - remove containers, volumes, and data secrets, then recreate from scratch"
     read -rp "  Choose action [update/wipe] (default: update): " answer
@@ -610,6 +630,14 @@ prompt_required_value() {
 }
 
 ensure_real_chutes_oauth_credentials() {
+    if [ "${BOOTSTRAP_OVERRIDE_SET_CHUTES_IDP_BASE_URL:-false}" != "true" ] && \
+        is_test_idp_base_url "${CHUTES_IDP_BASE_URL:-}"; then
+        warn "Ignoring test-only CHUTES_IDP_BASE_URL=${CHUTES_IDP_BASE_URL} for a real bootstrap run"
+        CHUTES_IDP_BASE_URL="https://api.chutes.ai"
+        CHUTES_OAUTH_CLIENT_ID=""
+        CHUTES_OAUTH_CLIENT_SECRET=""
+    fi
+
     if [ "${CHUTES_IDP_BASE_URL:-https://api.chutes.ai}" = "https://api.chutes.ai" ]; then
         if is_placeholder_client_id "${CHUTES_OAUTH_CLIENT_ID:-}"; then
             CHUTES_OAUTH_CLIENT_ID=""

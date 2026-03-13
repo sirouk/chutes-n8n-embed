@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Destructive end-to-end test for chutes-n8n-embed.
+# Destructive end-to-end test for chutes-n8n-local.
 # Uses a test local Chutes IdP and recreates the local stack from scratch.
 #
 set -euo pipefail
