@@ -7,7 +7,6 @@ services:
       dockerfile: Dockerfile.local-proxy
       args:
         E2EE_PROXY_IMAGE: ${E2EE_PROXY_IMAGE:-parachutes/e2ee-proxy:latest}
-    container_name: n8n-local-proxy
     environment:
       TLS_DOMAIN: ${N8N_HOST:-e2ee-local-proxy.chutes.dev}
     ports:

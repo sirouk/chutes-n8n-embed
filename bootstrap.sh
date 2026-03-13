@@ -200,7 +200,7 @@ existing_install_detected() {
         return 0
     fi
 
-    if docker inspect n8n >/dev/null 2>&1; then
+    if [ -n "$(compose ps -q n8n 2>/dev/null | head -n 1)" ]; then
         return 0
     fi
 
@@ -268,26 +268,26 @@ render_local_proxy_config() {
 }
 
 container_runtime_status() {
+    if [ -z "${1:-}" ]; then
+        echo missing
+        return
+    fi
+
     docker inspect "$1" --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' 2>/dev/null || echo missing
 }
 
-edge_container_name() {
-    case "$EDGE_SERVICE" in
-        caddy) printf '%s' "n8n-caddy" ;;
-        local-proxy) printf '%s' "n8n-local-proxy" ;;
-        *)
-            err "Unknown EDGE_SERVICE: $EDGE_SERVICE"
-            exit 1
-            ;;
-    esac
+compose_container_id() {
+    compose ps -q "$1" 2>/dev/null | head -n 1
 }
 
-wait_for_container_ready() {
-    local container="$1"
+wait_for_service_ready() {
+    local service="$1"
     local attempts="$2"
     local status="missing"
+    local container=""
 
     while [ "$attempts" -gt 0 ]; do
+        container="$(compose_container_id "$service")"
         status="$(container_runtime_status "$container")"
         if [ "$status" = "healthy" ] || [ "$status" = "running" ]; then
             printf '%s' "$status"
@@ -893,6 +893,7 @@ rsync -a --delete \
     --exclude tests \
     --exclude coverage \
     "$NODES_SRC/" "$BUILD_DIR/"
+node "$SCRIPT_DIR/scripts/patch-n8n-nodes-chutes.mjs" "$BUILD_DIR"
 ok "Custom node build context is ready"
 
 if [ "$FORCE_ALL" = true ]; then
@@ -916,7 +917,7 @@ attempts=0
 max_attempts=80
 status="starting"
 while [ "$attempts" -lt "$max_attempts" ]; do
-    status="$(docker inspect n8n --format='{{.State.Health.Status}}' 2>/dev/null || echo starting)"
+    status="$(container_runtime_status "$(compose_container_id n8n)")"
     if [ "$status" = "healthy" ]; then
         break
     fi
@@ -934,9 +935,8 @@ if [ "$status" != "healthy" ]; then
 fi
 ok "n8n is healthy"
 
-edge_container="$(edge_container_name)"
 info "Waiting for ${EDGE_SERVICE} to become ready ..."
-edge_status="$(wait_for_container_ready "$edge_container" 30 || true)"
+edge_status="$(wait_for_service_ready "$EDGE_SERVICE" 30 || true)"
 if [ "$edge_status" != "healthy" ] && [ "$edge_status" != "running" ]; then
     err "${EDGE_SERVICE} did not become ready (status: ${edge_status})"
     err "Check logs with: $(compose_command_hint) logs ${EDGE_SERVICE}"

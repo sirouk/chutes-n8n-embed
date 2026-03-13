@@ -1,7 +1,6 @@
 services:
   postgres:
     image: postgres:15.17-alpine3.23
-    container_name: n8n-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-n8n}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -25,7 +24,6 @@ services:
         N8N_VERSION: ${N8N_VERSION:-2.12.1}
         N8N_SOURCE_REPO: ${N8N_SOURCE_REPO:-https://github.com/n8n-io/n8n.git}
         N8N_SOURCE_REF: ${N8N_SOURCE_REF:-n8n@2.12.1}
-    container_name: n8n
     environment:
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=postgres

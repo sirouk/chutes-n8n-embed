@@ -62,15 +62,26 @@ PY
 }
 
 container_health_status() {
+    if [ -z "${1:-}" ]; then
+        echo missing
+        return
+    fi
+
     docker inspect "$1" --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' 2>/dev/null || echo missing
 }
 
-wait_for_container() {
-    local container="$1"
+compose_container_id() {
+    compose ps -q "$1" 2>/dev/null | head -n 1
+}
+
+wait_for_service() {
+    local service="$1"
     local attempts="$2"
     local status="missing"
+    local container=""
 
     while [ "$attempts" -gt 0 ]; do
+        container="$(compose_container_id "$service")"
         status="$(container_health_status "$container")"
         if [ "$status" = "healthy" ] || [ "$status" = "running" ]; then
             printf '%s' "$status"
@@ -93,16 +104,6 @@ curl_edge() {
     fi
 
     curl "${host_args[@]}" "$@"
-}
-
-edge_container_name() {
-    case "${EDGE_SERVICE:-}" in
-        caddy) printf '%s' "n8n-caddy" ;;
-        local-proxy) printf '%s' "n8n-local-proxy" ;;
-        *)
-            printf '%s' "missing"
-            ;;
-    esac
 }
 
 echo "=== Syntax checks ==="
@@ -130,6 +131,12 @@ if command -v node >/dev/null 2>&1; then
         pass "node --check apply-n8n-overlay.mjs"
     else
         fail "node --check apply-n8n-overlay.mjs"
+    fi
+
+    if node --check "$PROJECT_DIR/scripts/patch-n8n-nodes-chutes.mjs" >/dev/null 2>&1; then
+        pass "node --check patch-n8n-nodes-chutes.mjs"
+    else
+        fail "node --check patch-n8n-nodes-chutes.mjs"
     fi
 else
     skip "node not installed - cannot validate overlay patcher"
@@ -206,13 +213,7 @@ if [ -z "$EDGE_SERVICE" ]; then
 fi
 
 for service in postgres n8n "$EDGE_SERVICE"; do
-    case "$service" in
-        postgres) container="n8n-postgres" ;;
-        n8n) container="n8n" ;;
-        *) container="$(edge_container_name)" ;;
-    esac
-
-    status="$(wait_for_container "$container" 30 || true)"
+    status="$(wait_for_service "$service" 30 || true)"
     if [ "$status" = "healthy" ] || [ "$status" = "running" ]; then
         pass "$service container $status"
     else

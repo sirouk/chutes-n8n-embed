@@ -273,31 +273,6 @@ print(credential.get("data", {}).get(field_name, ""))
 ' "$field_name"
 }
 
-upsert_credential_json() {
-    local credential_json="$1"
-
-    printf '[%s]' "$credential_json" | compose exec -T n8n \
-        sh -c 'cat > /tmp/credential-update.json && n8n import:credentials --input=/tmp/credential-update.json >/dev/null && rm -f /tmp/credential-update.json'
-}
-
-set_managed_credential_custom_url() {
-    local subject="$1"
-    local custom_url="$2"
-    local updated_credential
-
-    updated_credential="$(managed_credential_json_for_subject "$subject" | python3 -c '
-import json
-import sys
-
-credential = json.load(sys.stdin)
-credential.setdefault("data", {})["customUrl"] = sys.argv[1]
-print(json.dumps(credential))
-' "$custom_url"
-)"
-
-    upsert_credential_json "$updated_credential"
-}
-
 test_managed_credential() {
     local subject="$1"
     local cookie_file="$2"
@@ -380,7 +355,6 @@ assert_eq "$(user_role_for_subject "sub-member")" "global:member" "member SSO us
 assert_eq "$(user_count_for_subject "sub-member")" "1" "member SSO identity should be created exactly once"
 assert_eq "$(managed_credential_count_for_subject "sub-member")" "1" "member SSO login should create exactly one managed Chutes credential"
 
-set_managed_credential_custom_url "sub-member" "http://test-chutes-idp:8080"
 member_refresh_before="$(managed_credential_field_for_subject "sub-member" "refreshToken")"
 member_session_before="$(managed_credential_field_for_subject "sub-member" "sessionToken")"
 assert_eq "$member_refresh_before" "refresh:member-code:0" "member SSO credential should start with the initial refresh token"
