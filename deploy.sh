@@ -670,9 +670,11 @@ refresh_local_dependency_checkout() {
     fi
 
     info "Resetting ${repo_name} to ${target_ref} ..."
-    git -C "$repo_dir" checkout --quiet --force --detach "$target_head" 2>/dev/null \
-        && ok "${repo_name} updated to $(git -C "$repo_dir" rev-parse --short HEAD)" \
-        || warn "Could not reset ${repo_name} to ${target_ref}; using the current checkout"
+    if git -C "$repo_dir" checkout --quiet --force --detach "$target_head" 2>/dev/null; then
+        ok "${repo_name} updated to $(git -C "$repo_dir" rev-parse --short HEAD)"
+    else
+        warn "Could not reset ${repo_name} to ${target_ref}; using the current checkout"
+    fi
 }
 
 ensure_dependency_checkout() {
