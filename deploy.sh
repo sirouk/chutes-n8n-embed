@@ -115,7 +115,7 @@ ENV_FILE="$SCRIPT_DIR/.env"
 LOCAL_HOSTNAME="e2ee-local-proxy.chutes.dev"
 PROJECT_N8N_VERSION="2.12.1"
 PROJECT_N8N_SOURCE_REPO="https://github.com/n8n-io/n8n.git"
-PROJECT_NODES_REPO="https://github.com/chutesai/n8n-nodes-chutes.git"
+PROJECT_NODES_REPO="https://github.com/sirouk/n8n-nodes-chutes.git"
 PROJECT_NODES_REF="main"
 FORCE_ALL=false
 RESET_OWNER_PASSWORD=false
@@ -635,7 +635,7 @@ prompt_install_action() {
 
 refresh_local_dependency_checkout() {
     local repo_dir="$1"
-    local repo_name branch upstream current_head upstream_head dirty_state
+    local repo_name target_ref target_head current_head
 
     repo_name="$(basename "$repo_dir")"
 
@@ -649,48 +649,30 @@ refresh_local_dependency_checkout() {
         return
     fi
 
-    dirty_state="$(git -C "$repo_dir" status --porcelain --untracked-files=no 2>/dev/null || true)"
-    if [ -n "$dirty_state" ]; then
-        warn "${repo_name} has local tracked changes; using the current checkout without pulling"
-        return
-    fi
+    target_ref="origin/${PROJECT_NODES_REF:-main}"
 
-    upstream="$(git -C "$repo_dir" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || true)"
-    branch="$(git -C "$repo_dir" rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)"
-    if [ -z "$upstream" ]; then
-        info "${repo_name} branch ${branch} has no upstream; using the current checkout"
-        return
-    fi
-
-    info "Refreshing ${repo_name} from ${upstream} ..."
-    if ! git -C "$repo_dir" fetch --quiet; then
+    info "Fetching latest ${repo_name} from origin ..."
+    if ! git -C "$repo_dir" fetch --quiet origin; then
         warn "Failed to fetch updates for ${repo_name}; using the current checkout"
         return
     fi
 
-    current_head="$(git -C "$repo_dir" rev-parse HEAD 2>/dev/null || true)"
-    upstream_head="$(git -C "$repo_dir" rev-parse "$upstream" 2>/dev/null || true)"
-
-    if [ -z "$current_head" ] || [ -z "$upstream_head" ]; then
-        warn "Unable to determine ${repo_name} revision state; using the current checkout"
+    target_head="$(git -C "$repo_dir" rev-parse "$target_ref" 2>/dev/null || true)"
+    if [ -z "$target_head" ]; then
+        warn "Could not resolve ${target_ref} for ${repo_name}; using the current checkout"
         return
     fi
 
-    if [ "$current_head" = "$upstream_head" ]; then
+    current_head="$(git -C "$repo_dir" rev-parse HEAD 2>/dev/null || true)"
+    if [ "$current_head" = "$target_head" ]; then
         ok "${repo_name} is already up to date"
         return
     fi
 
-    if git -C "$repo_dir" merge-base --is-ancestor "$current_head" "$upstream_head"; then
-        if git -C "$repo_dir" pull --ff-only --quiet; then
-            ok "${repo_name} fast-forwarded to the latest ${branch}"
-        else
-            warn "Fast-forward update failed for ${repo_name}; using the current checkout"
-        fi
-        return
-    fi
-
-    warn "${repo_name} has diverged from ${upstream}; using the current checkout without pulling"
+    info "Resetting ${repo_name} to ${target_ref} ..."
+    git -C "$repo_dir" checkout --quiet --force --detach "$target_head" 2>/dev/null \
+        && ok "${repo_name} updated to $(git -C "$repo_dir" rev-parse --short HEAD)" \
+        || warn "Could not reset ${repo_name} to ${target_ref}; using the current checkout"
 }
 
 ensure_dependency_checkout() {

@@ -16,7 +16,7 @@ The deploy script:
 
 - clones or refreshes `chutesai/chutes-n8n-local`
 - runs `deploy.sh`
-- auto-clones `chutesai/n8n-nodes-chutes` beside it if missing
+- auto-clones `sirouk/n8n-nodes-chutes` beside it if missing
 - fast-forwards `n8n-nodes-chutes` on clean reruns so the embedded nodes do not drift stale
 
 When launched from a terminal, the deploy script prompts for install mode and the required Chutes OAuth settings even when invoked via `curl ... | bash`.
@@ -43,13 +43,13 @@ cd chutes-n8n-local
 If `../n8n-nodes-chutes` is missing, deploy will clone:
 
 ```text
-https://github.com/chutesai/n8n-nodes-chutes.git
+https://github.com/sirouk/n8n-nodes-chutes.git
 ```
 
 You can override that source if needed (fork) with:
 
 ```bash
-CHUTES_N8N_NODES_GIT_URL=git@github.com:chutesai/n8n-nodes-chutes.git ./deploy.sh
+CHUTES_N8N_NODES_GIT_URL=git@github.com:sirouk/n8n-nodes-chutes.git ./deploy.sh
 ```
 
 ## Deploy

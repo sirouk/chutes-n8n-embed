@@ -48,7 +48,7 @@ jobs:
       - name: Checkout n8n-nodes-chutes
         uses: actions/checkout@v6
         with:
-          repository: chutesai/n8n-nodes-chutes
+          repository: sirouk/n8n-nodes-chutes
           path: n8n-nodes-chutes
 
       - name: Set up Node.js
