@@ -18,7 +18,7 @@ services:
   n8n:
     build:
       context: .
-      dockerfile: Dockerfile.n8n
+      dockerfile: Dockerfile.standalone
       args:
         NODE_VERSION: 24.13.1
         N8N_VERSION: ${N8N_VERSION:-2.12.1}

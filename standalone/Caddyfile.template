@@ -1,0 +1,19 @@
+__SERVER_NAME__ {
+    __TLS_DIRECTIVE__
+
+    encode zstd gzip
+
+    @chutes_v1 path /v1/*
+    reverse_proxy @chutes_v1 https://127.0.0.1:8443 {
+        header_up Host 127.0.0.1
+        transport http {
+            tls_insecure_skip_verify
+        }
+    }
+
+    reverse_proxy 127.0.0.1:5678 {
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Host {host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}

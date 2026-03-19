@@ -1,0 +1,187 @@
+ARG NODE_VERSION=24.13.1
+ARG N8N_VERSION=2.12.1
+ARG N8N_SOURCE_REPO=https://github.com/n8n-io/n8n.git
+ARG N8N_SOURCE_REF=n8n@2.12.1
+ARG E2EE_PROXY_IMAGE=parachutes/e2ee-proxy:latest
+ARG S6_OVERLAY_VERSION=3.2.0.2
+ARG CADDY_VERSION=2.11.2
+
+# ---------------------------------------------------------------------------
+# Stage 1: build custom Chutes nodes (reused from Dockerfile.n8n)
+# ---------------------------------------------------------------------------
+FROM node:${NODE_VERSION}-alpine AS chutes-nodes-builder
+
+WORKDIR /build
+COPY build/n8n-nodes-chutes/ ./
+RUN npm ci --ignore-scripts && npm run build && rm -rf node_modules && npm ci --ignore-scripts --omit=dev
+
+# ---------------------------------------------------------------------------
+# Stage 2: build n8n with overlays (reused from Dockerfile.n8n)
+# ---------------------------------------------------------------------------
+FROM --platform=$BUILDPLATFORM n8nio/base:${NODE_VERSION} AS n8n-builder
+
+ARG N8N_SOURCE_REPO
+ARG N8N_SOURCE_REF
+
+WORKDIR /src
+
+RUN git clone --depth 1 --branch "${N8N_SOURCE_REF}" "${N8N_SOURCE_REPO}" /src
+
+COPY n8n-overlays /overlay/n8n-overlays
+COPY scripts/apply-n8n-overlay.mjs /overlay/scripts/apply-n8n-overlay.mjs
+
+RUN node /overlay/scripts/apply-n8n-overlay.mjs /src /overlay
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
+    --mount=type=cache,id=pnpm-metadata,target=/root/.cache/pnpm/metadata \
+    DOCKER_BUILD=true pnpm install --frozen-lockfile
+RUN attempts=0; \
+    until [ "$attempts" -ge 6 ]; do \
+        attempts=$((attempts + 1)); \
+        echo "Running pnpm build (attempt ${attempts}/6)"; \
+        if pnpm build; then \
+            break; \
+        fi; \
+        if [ "$attempts" -ge 6 ]; then \
+            exit 1; \
+        fi; \
+        echo "pnpm build failed, retrying after transient Turborepo error..."; \
+        sleep 2; \
+    done
+
+RUN node -e 'const fs = require("fs"); const file = "package.json"; const data = JSON.parse(fs.readFileSync(file, "utf8")); if (data.pnpm) delete data.pnpm.patchedDependencies; fs.writeFileSync(file, JSON.stringify(data, null, 2) + "\n");'
+RUN node .github/scripts/trim-fe-packageJson.js
+RUN find . -type f '(' -name '*.ts' -o -name '*.js.map' -o -name '*.vue' -o -name 'tsconfig.json' -o -name '*.tsbuildinfo' ')' -delete
+
+RUN mkdir /compiled
+RUN NODE_ENV=production DOCKER_BUILD=true pnpm --filter=n8n --prod --no-optional deploy --legacy /compiled
+
+# ---------------------------------------------------------------------------
+# Stage 3: rebuild native addons on Ubuntu (glibc, matching runtime base)
+# ---------------------------------------------------------------------------
+FROM ubuntu:22.04 AS native-addon-builder
+
+ARG NODE_VERSION
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl xz-utils python3 make g++ && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN ARCH=$(dpkg --print-architecture) && \
+    curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${ARCH}.tar.xz" \
+        | tar -xJ -C /usr/local --strip-components=1
+
+COPY --from=n8n-builder /compiled /usr/local/lib/node_modules/n8n
+RUN cd /usr/local/lib/node_modules/n8n && npm rebuild sqlite3 isolated-vm
+
+# ---------------------------------------------------------------------------
+# Stage 4: extract openresty + Lua + native .so from e2ee-proxy
+# ---------------------------------------------------------------------------
+FROM ${E2EE_PROXY_IMAGE} AS openresty-layer
+
+# ---------------------------------------------------------------------------
+# Stage 5: Caddy binary
+# ---------------------------------------------------------------------------
+FROM caddy:${CADDY_VERSION}-alpine AS caddy-binary
+
+# ---------------------------------------------------------------------------
+# Stage 6: runtime — Ubuntu 22.04 + n8n + openresty + Caddy + s6-overlay
+# ---------------------------------------------------------------------------
+FROM ubuntu:22.04
+
+ARG NODE_VERSION
+ARG N8N_VERSION
+ARG S6_OVERLAY_VERSION
+
+ENV NODE_ENV=production \
+    SHELL=/bin/sh \
+    N8N_CUSTOM_EXTENSIONS=/opt/custom-nodes \
+    S6_KEEP_ENV=1 \
+    S6_BEHAVIOUR_IF_STAGE2_FAILS=2 \
+    S6_CMD_WAIT_FOR_SERVICES_MAXTIME=120000
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        git \
+        graphicsmagick \
+        libatomic1 \
+        openssl \
+        sqlite3 \
+        tini \
+        wget \
+        xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node.js (same version used to build n8n)
+RUN ARCH=$(dpkg --print-architecture) && \
+    curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${ARCH}.tar.xz" \
+        | tar -xJ -C /usr/local --strip-components=1 && \
+    node --version
+
+# s6-overlay v3
+RUN ARCH_S6=$(case "$(dpkg --print-architecture)" in \
+        amd64) echo "x86_64";; \
+        arm64) echo "aarch64";; \
+        *) echo "$(dpkg --print-architecture)";; \
+    esac) && \
+    curl -fsSL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-noarch.tar.xz" \
+        | tar -xJp -C / && \
+    curl -fsSL "https://github.com/just-containers/s6-overlay/releases/download/v${S6_OVERLAY_VERSION}/s6-overlay-${ARCH_S6}.tar.xz" \
+        | tar -xJp -C /
+
+RUN groupadd -r node && useradd -r -g node -m -d /home/node node
+
+WORKDIR /home/node
+
+# n8n (native addons built on Ubuntu in stage 3)
+COPY --from=native-addon-builder /usr/local/lib/node_modules/n8n /usr/local/lib/node_modules/n8n
+COPY --from=n8n-builder /src/docker/images/n8n/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh && \
+    ln -s /usr/local/lib/node_modules/n8n/bin/n8n /usr/local/bin/n8n
+
+# Custom Chutes nodes
+RUN mkdir -p /opt/custom-nodes/n8n-nodes-chutes
+COPY --from=chutes-nodes-builder /build/dist/ /opt/custom-nodes/n8n-nodes-chutes/dist/
+COPY --from=chutes-nodes-builder /build/package.json /opt/custom-nodes/n8n-nodes-chutes/
+COPY --from=chutes-nodes-builder /build/node_modules/ /opt/custom-nodes/n8n-nodes-chutes/node_modules/
+
+# openresty (only the installation dir, not system libs)
+COPY --from=openresty-layer /usr/local/openresty /usr/local/openresty
+COPY n8n-overlays/e2ee-proxy/lua/e2ee_discovery.lua /usr/local/openresty/lua/e2ee_discovery.lua
+
+# Caddy
+COPY --from=caddy-binary /usr/bin/caddy /usr/bin/caddy
+
+# Standalone scripts and configs
+COPY standalone/entrypoint.sh /opt/standalone/entrypoint.sh
+COPY standalone/configure-standalone.sh /opt/standalone/configure-standalone.sh
+COPY standalone/nginx-standalone.conf.template /opt/standalone/nginx-standalone.conf.template
+COPY standalone/nginx-e2ee-internal.conf.template /opt/standalone/nginx-e2ee-internal.conf.template
+COPY standalone/Caddyfile.template /opt/standalone/Caddyfile.template
+RUN chmod +x /opt/standalone/entrypoint.sh /opt/standalone/configure-standalone.sh
+
+# Starter workflows
+COPY workflows/ /opt/workflows/
+
+# s6 service definitions
+COPY standalone/s6-rc.d/ /etc/s6-overlay/s6-rc.d/
+RUN mkdir -p /etc/s6-overlay/s6-rc.d/user/contents.d && \
+    touch /etc/s6-overlay/s6-rc.d/user/contents.d/openresty \
+          /etc/s6-overlay/s6-rc.d/user/contents.d/caddy \
+          /etc/s6-overlay/s6-rc.d/user/contents.d/n8n \
+          /etc/s6-overlay/s6-rc.d/user/contents.d/configure
+
+# Dummy self-signed cert for openresty startup (replaced at runtime)
+RUN openssl req -x509 -newkey rsa:2048 -keyout /tmp/dummy.key -out /tmp/dummy.crt \
+        -days 3650 -nodes -subj "/CN=localhost" 2>/dev/null && \
+    cp /tmp/dummy.crt /tmp/e2ee-self-signed.crt && \
+    cp /tmp/dummy.key /tmp/e2ee-self-signed.key
+
+# Permissions
+RUN mkdir -p /data/.n8n /data/caddy && \
+    chown -R node:node /home/node /opt/custom-nodes /data /tmp/dummy.* /tmp/e2ee-self-signed.*
+
+VOLUME /data
+EXPOSE 80 443 5678
+
+ENTRYPOINT ["/opt/standalone/entrypoint.sh"]
