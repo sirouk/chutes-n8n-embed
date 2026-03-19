@@ -115,8 +115,10 @@ ENV_FILE="$SCRIPT_DIR/.env"
 LOCAL_HOSTNAME="e2ee-local-proxy.chutes.dev"
 PROJECT_N8N_VERSION="2.12.1"
 PROJECT_N8N_SOURCE_REPO="https://github.com/n8n-io/n8n.git"
+PROJECT_N8N_SOURCE_SHA="42c7f71b6863581044006af0309ac38aab8d7c9f"
 PROJECT_NODES_REPO="https://github.com/sirouk/n8n-nodes-chutes.git"
 PROJECT_NODES_REF="main"
+PROJECT_E2EE_PROXY_IMAGE="parachutes/e2ee-proxy:latest@sha256:0af4965c84e3eace05063fe2a013e818c30dd3687e9690a3bea83ae1df3b9a56"
 FORCE_ALL=false
 RESET_OWNER_PASSWORD=false
 DOWN=false
@@ -377,6 +379,7 @@ write_env_file() {
         env_line N8N_VERSION "$N8N_VERSION"
         env_line N8N_SOURCE_REPO "$N8N_SOURCE_REPO"
         env_line N8N_SOURCE_REF "$N8N_SOURCE_REF"
+        env_line N8N_SOURCE_SHA "$N8N_SOURCE_SHA"
         env_line TZ "$TZ"
         echo
         env_line N8N_HOST "$N8N_HOST"
@@ -577,6 +580,7 @@ adopt_project_n8n_pin() {
     local desired_version="$PROJECT_N8N_VERSION"
     local desired_repo="$PROJECT_N8N_SOURCE_REPO"
     local desired_ref="n8n@${desired_version}"
+    local desired_sha="$PROJECT_N8N_SOURCE_SHA"
 
     if [ "${BOOTSTRAP_OVERRIDE_SET_N8N_VERSION:-false}" != "true" ]; then
         if [ -n "${N8N_VERSION:-}" ] && [ "$N8N_VERSION" != "$desired_version" ]; then
@@ -594,6 +598,14 @@ adopt_project_n8n_pin() {
             N8N_SOURCE_REF="$desired_ref"
         else
             N8N_SOURCE_REF="${N8N_SOURCE_REF:-n8n@${N8N_VERSION}}"
+        fi
+    fi
+
+    if [ "${BOOTSTRAP_OVERRIDE_SET_N8N_SOURCE_SHA:-false}" != "true" ]; then
+        if [ "$N8N_SOURCE_REPO" = "$desired_repo" ]; then
+            N8N_SOURCE_SHA="$desired_sha"
+        else
+            N8N_SOURCE_SHA="${N8N_SOURCE_SHA:-}"
         fi
     fi
 }
@@ -928,6 +940,7 @@ for overridable_var in \
     N8N_VERSION \
     N8N_SOURCE_REPO \
     N8N_SOURCE_REF \
+    N8N_SOURCE_SHA \
     TZ \
     N8N_HOST \
     ACME_EMAIL \
@@ -967,6 +980,7 @@ for overridable_var in \
     N8N_VERSION \
     N8N_SOURCE_REPO \
     N8N_SOURCE_REF \
+    N8N_SOURCE_SHA \
     TZ \
     N8N_HOST \
     ACME_EMAIL \
@@ -992,6 +1006,7 @@ done
 N8N_VERSION="${N8N_VERSION:-$PROJECT_N8N_VERSION}"
 N8N_SOURCE_REPO="${N8N_SOURCE_REPO:-$PROJECT_N8N_SOURCE_REPO}"
 N8N_SOURCE_REF="${N8N_SOURCE_REF:-n8n@${N8N_VERSION}}"
+N8N_SOURCE_SHA="${N8N_SOURCE_SHA:-$PROJECT_N8N_SOURCE_SHA}"
 TZ="${TZ:-UTC}"
 POSTGRES_USER="${POSTGRES_USER:-n8n}"
 POSTGRES_DB="${POSTGRES_DB:-n8n}"
@@ -1003,7 +1018,7 @@ CHUTES_SSO_SCOPES="${CHUTES_SSO_SCOPES:-openid profile chutes:read chutes:invoke
 CHUTES_ADMIN_USERNAMES="${CHUTES_ADMIN_USERNAMES:-}"
 CHUTES_API_KEY="${CHUTES_API_KEY:-}"
 CHUTES_TRAFFIC_MODE="${CHUTES_TRAFFIC_MODE:-direct}"
-E2EE_PROXY_IMAGE="${E2EE_PROXY_IMAGE:-parachutes/e2ee-proxy:latest}"
+E2EE_PROXY_IMAGE="${E2EE_PROXY_IMAGE:-$PROJECT_E2EE_PROXY_IMAGE}"
 ALLOW_NON_CONFIDENTIAL="${ALLOW_NON_CONFIDENTIAL:-false}"
 CHUTES_SSO_PROXY_BYPASS="${CHUTES_SSO_PROXY_BYPASS:-false}"
 CHUTES_PROXY_BASE_URL="${CHUTES_PROXY_BASE_URL:-}"

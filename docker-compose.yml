@@ -18,12 +18,14 @@ services:
   n8n:
     build:
       context: .
-      dockerfile: Dockerfile.standalone
+      dockerfile: Dockerfile.local-repo
       args:
         NODE_VERSION: 24.13.1
         N8N_VERSION: ${N8N_VERSION:-2.12.1}
         N8N_SOURCE_REPO: ${N8N_SOURCE_REPO:-https://github.com/n8n-io/n8n.git}
         N8N_SOURCE_REF: ${N8N_SOURCE_REF:-n8n@2.12.1}
+        N8N_SOURCE_SHA: ${N8N_SOURCE_SHA:-42c7f71b6863581044006af0309ac38aab8d7c9f}
+        E2EE_PROXY_IMAGE: ${E2EE_PROXY_IMAGE:-parachutes/e2ee-proxy:latest@sha256:0af4965c84e3eace05063fe2a013e818c30dd3687e9690a3bea83ae1df3b9a56}
     environment:
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=postgres

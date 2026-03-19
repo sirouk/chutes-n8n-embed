@@ -2,9 +2,27 @@
 
 Self-hosted n8n with native `Login with Chutes`, bundled `n8n-nodes-chutes`, local `e2ee-local-proxy.chutes.dev` mode, and public-domain mode with ACME.
 
+This repo supports two packaging shapes:
+
+- a single-container standalone image built from `Dockerfile.local-repo`
+- a Docker Compose deployment driven by `deploy.sh`
+
 Build workflows with Chutes-native auth, multi-modal capabilities, and node integrations on top of n8n's orchestration, scheduling, webhooks, and automation runtime.
 
 ## Quick Start
+
+### Docker
+
+```bash
+docker run --rm -it \
+  -p 80:80 -p 443:443 \
+  -v chutes_n8n_data:/data \
+  ghcr.io/chutesai/chutes-n8n-local:latest
+```
+
+See [Standalone Image](#standalone-image) for non-interactive runs, domain mode, runtime flags, persisted state layout, and building from source.
+
+### Repo-Based
 
 macOS/Linux/WSL:
 
@@ -32,8 +50,7 @@ curl -fsSL https://raw.githubusercontent.com/chutesai/chutes-n8n-local/main/depl
   bash
 ```
 
-## Manual Clone
-
+Manual clone:
 
 ```bash
 git clone https://github.com/chutesai/chutes-n8n-local.git
@@ -95,10 +112,92 @@ Traffic-mode scope:
 - `direct` / `e2ee-proxy` controls how text-based Chutes LLM requests are executed
 - chute discovery and non-text Chutes traffic stay on native Chutes endpoints
 
+## Standalone Image
+
+`Dockerfile.local-repo` packages n8n, OpenResty, Caddy, s6-overlay, bundled Chutes nodes, and starter workflows into a single image.
+
+Published image:
+
+- `ghcr.io/chutesai/chutes-n8n-local:latest`
+- release tags are also published as semver tags when releases are cut
+
+Releases are published for `linux/amd64`.
+
+Persistent standalone state lives under `/data`:
+
+- `/data/.n8n`: n8n user data and SQLite database
+- `/data/caddy`: Caddy certificate and state storage
+- `/data/.env`: standalone runtime configuration written after first boot
+- `/data/.configured`: initialization sentinel
+
+Build from source locally:
+
+The examples below tag the image as `chutes-n8n-local:local-repo` to make it clear that it was built from your current checkout, not pulled from GHCR.
+
+```bash
+docker buildx build --load \
+  -t chutes-n8n-local:local-repo \
+  -f Dockerfile.local-repo .
+```
+
+Run it interactively and let the container prompt for settings:
+
+```bash
+docker run --rm -it \
+  -p 80:80 -p 443:443 \
+  -v chutes_n8n_data:/data \
+  chutes-n8n-local:local-repo
+```
+
+Run it non-interactively in local mode:
+
+```bash
+docker run --rm -it \
+  -p 80:80 -p 443:443 \
+  -v chutes_n8n_data:/data \
+  -e INSTALL_MODE=local \
+  -e CHUTES_TRAFFIC_MODE=direct \
+  -e CHUTES_OAUTH_CLIENT_ID=... \
+  -e CHUTES_OAUTH_CLIENT_SECRET=... \
+  chutes-n8n-local:local-repo
+```
+
+Run it non-interactively in domain mode:
+
+```bash
+docker run --rm -it \
+  -p 80:80 -p 443:443 \
+  -v chutes_n8n_data:/data \
+  -e INSTALL_MODE=domain \
+  -e N8N_HOST=n8n.example.com \
+  -e ACME_EMAIL=you@example.com \
+  -e CHUTES_TRAFFIC_MODE=e2ee-proxy \
+  -e CHUTES_OAUTH_CLIENT_ID=... \
+  -e CHUTES_OAUTH_CLIENT_SECRET=... \
+  chutes-n8n-local:local-repo
+```
+
+Standalone runtime knobs:
+
+- `INSTALL_MODE`: `local` or `domain`
+- `CHUTES_TRAFFIC_MODE`: `direct` or `e2ee-proxy`
+- `N8N_HOST` and `ACME_EMAIL`: required for `domain`
+- `--reconfigure`: rerun setup prompts while preserving existing data
+- `--wipe`: delete persisted n8n and Caddy state, then initialize again
+
+In local mode, the container serves n8n on `https://e2ee-local-proxy.chutes.dev`. To test it without editing your hosts file:
+
+```bash
+curl -sk \
+  --resolve e2ee-local-proxy.chutes.dev:443:127.0.0.1 \
+  https://e2ee-local-proxy.chutes.dev/
+```
+
 ## What Deploy Builds
 
 - Community n8n with native Chutes SSO
 - baked-in `n8n-nodes-chutes`
+- `n8n` built from `Dockerfile.local-repo`
 - `postgres`
 - one edge service:
   - `local-proxy` for local installs
@@ -114,16 +213,52 @@ Traffic-mode scope:
 ```
 
 - `smoke-test.sh --syntax` is safe anywhere
+- `smoke-test.sh` validates the compose stack after `deploy.sh`
 - `e2e-test.sh` is destructive and rebuilds the local test stack
 
 CI runs syntax smoke checks plus the local test-IdP end-to-end path.
+
+## Test Before Packaging
+
+Before publishing the standalone image, validate both the existing compose path and the standalone package path:
+
+```bash
+./scripts/smoke-test.sh --syntax
+./scripts/e2e-test.sh
+
+docker buildx build --load \
+  -t chutes-n8n-local:standalone-test \
+  -f Dockerfile.local-repo .
+
+mkdir -p .tmp/standalone-data
+
+docker run --rm -it \
+  -p 80:80 -p 443:443 \
+  -v "$PWD/.tmp/standalone-data:/data" \
+  -e INSTALL_MODE=local \
+  -e CHUTES_TRAFFIC_MODE=direct \
+  -e CHUTES_OAUTH_CLIENT_ID=... \
+  -e CHUTES_OAUTH_CLIENT_SECRET=... \
+  chutes-n8n-local:standalone-test
+```
+
+For the standalone image, check at least:
+
+- first boot initializes cleanly with an empty `/data` volume
+- second boot reuses the saved config without prompting again
+- `--reconfigure` updates settings without deleting data
+- `--wipe` clears persisted state and starts from scratch
+- local mode responds on `https://e2ee-local-proxy.chutes.dev`
+- domain mode obtains certificates and serves the expected hostname
 
 ## Repo Layout
 
 - `deploy.sh`: consolidated quick-start, install, and update entrypoint
 - `docker-compose*.yml`: base, local, domain, and test stacks
-- `Dockerfile.n8n`: pinned n8n build with SSO overlays and bundled Chutes nodes
+- `Dockerfile.local-repo`: standalone package image with n8n, OpenResty, Caddy, and s6-overlay
+- `Dockerfile.n8n`: n8n-focused build recipe retained alongside the standalone image
 - `n8n-overlays/`: native n8n backend and UI changes
+- `standalone/`: standalone entrypoint, proxy templates, post-start setup, and s6 service definitions
 - `scripts/`: deploy helpers, smoke tests, and E2E coverage
 - `tests/test-chutes-idp/`: local test IdP for CI and destructive local E2E
 

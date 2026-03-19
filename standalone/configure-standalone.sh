@@ -18,8 +18,14 @@ fi
 DATA_DIR="${STANDALONE_DATA_DIR:-/data}"
 CHUTES_API_KEY="${CHUTES_API_KEY:-}"
 DB_TYPE="${DB_TYPE:-sqlite}"
-SQLITE_DB="$DATA_DIR/.n8n/database.sqlite"
+SQLITE_DB="${N8N_USER_FOLDER:-$DATA_DIR}/.n8n/database.sqlite"
 WORKFLOW_DIR="/opt/workflows"
+
+cleanup() {
+    rm -f /tmp/.owner-password /tmp/creds.json /tmp/workflow.json /tmp/n8n-api.body /tmp/n8n-api.status
+}
+
+trap cleanup EXIT
 
 # ---------------------------------------------------------------------------
 # Wait for n8n to be healthy
@@ -48,18 +54,28 @@ n8n_api() {
     _method="$1"
     _path="$2"
     shift 2
+    : > /tmp/n8n-api.body
+    printf '000' > /tmp/n8n-api.status
     case "$_method" in
         POST)
             _body="${1:-}"
-            wget -q -O- \
-                --header='Content-Type: application/json' \
-                --post-data="$_body" \
-                "http://127.0.0.1:5678${_path}" 2>/dev/null || true
+            _status="$(
+                curl -sS -o /tmp/n8n-api.body -w '%{http_code}' \
+                    --header 'Content-Type: application/json' \
+                    --data "$_body" \
+                    "http://127.0.0.1:5678${_path}" 2>/dev/null || printf '000'
+            )"
+            printf '%s' "$_status" > /tmp/n8n-api.status
             ;;
         GET)
-            wget -q -O- "http://127.0.0.1:5678${_path}" 2>/dev/null || true
+            _status="$(
+                curl -sS -o /tmp/n8n-api.body -w '%{http_code}' \
+                    "http://127.0.0.1:5678${_path}" 2>/dev/null || printf '000'
+            )"
+            printf '%s' "$_status" > /tmp/n8n-api.status
             ;;
     esac
+    cat /tmp/n8n-api.body
 }
 
 sql_escape() {
@@ -119,17 +135,50 @@ setup_body="$(printf '{"email":"%s","firstName":"Chutes","lastName":"Owner","pas
 if owner_is_configured; then
     echo "    Owner already configured"
 else
-    setup_result="$(n8n_api POST /rest/owner/setup "$setup_body")"
-    case "$setup_result" in
-        *'"id"'*)
-            echo "    Owner account created"
-            ;;
-        *)
-            echo "    ERROR: owner setup failed"
+    setup_attempts=0
+    setup_max_attempts=90
+    setup_result=""
+
+    while [ "$setup_attempts" -lt "$setup_max_attempts" ]; do
+        setup_result="$(n8n_api POST /rest/owner/setup "$setup_body")"
+        N8N_API_STATUS="$(cat /tmp/n8n-api.status 2>/dev/null || printf '000')"
+        case "${N8N_API_STATUS}:${setup_result}" in
+            2*:*'"id"'*)
+                echo "    Owner account created"
+                break
+                ;;
+            2*:*"instance owner already set up"*)
+                echo "    Owner already configured"
+                break
+                ;;
+            000:*|404:*|5*:*|*:"n8n is starting up"*|*:"Please wait"*|2*:"")
+                setup_attempts=$((setup_attempts + 1))
+                if [ "$setup_attempts" -eq 1 ]; then
+                    echo "    n8n API is still starting up; waiting for owner setup endpoint ..."
+                fi
+                sleep 2
+                ;;
+            *)
+                echo "    ERROR: owner setup failed"
+                echo "    HTTP status: ${N8N_API_STATUS}"
+                if [ -n "$setup_result" ]; then
+                    echo "    $setup_result" | head -5
+                else
+                    echo "    owner setup returned an empty response"
+                fi
+                exit 1
+                ;;
+        esac
+    done
+
+    if [ "$setup_attempts" -ge "$setup_max_attempts" ]; then
+        echo "    ERROR: owner setup endpoint never became ready"
+        echo "    Last HTTP status: ${N8N_API_STATUS}"
+        if [ -n "$setup_result" ]; then
             echo "    $setup_result" | head -5
-            exit 1
-            ;;
-    esac
+        fi
+        exit 1
+    fi
 fi
 
 owner_id="$(owner_user_id)"
@@ -158,7 +207,6 @@ const creds = [{
 fs.writeFileSync('/tmp/creds.json', JSON.stringify(creds));
 "
         n8n import:credentials --input=/tmp/creds.json 2>/dev/null
-        rm -f /tmp/creds.json
         echo "    Chutes API credential imported"
     fi
 fi
@@ -185,14 +233,12 @@ if [ -d "$WORKFLOW_DIR" ] && ls "$WORKFLOW_DIR"/*.json >/dev/null 2>&1; then
         node -e "
 const fs = require('fs');
 const wf = JSON.parse(fs.readFileSync('$wf_file', 'utf8'));
-wf.id = wf.id || '$wf_id';
+        wf.id = wf.id || '$wf_id';
 fs.writeFileSync('/tmp/workflow.json', JSON.stringify(wf));
 "
         n8n import:workflow --input=/tmp/workflow.json --userId="$owner_id" 2>/dev/null
-        rm -f /tmp/workflow.json
         echo "    Imported workflow: $wf_name"
     done
 fi
 
-rm -f /tmp/.owner-password
 echo "  Configuration complete."

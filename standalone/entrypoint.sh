@@ -16,7 +16,7 @@ set -eu
 DATA_DIR="/data"
 ENV_FILE="$DATA_DIR/.env"
 SENTINEL="$DATA_DIR/.configured"
-N8N_HOME="$DATA_DIR/.n8n"
+N8N_STATE_DIR="$DATA_DIR/.n8n"
 CADDY_DATA="$DATA_DIR/caddy"
 LOCAL_HOSTNAME="e2ee-local-proxy.chutes.dev"
 RECONFIGURE=false
@@ -173,15 +173,15 @@ write_env_file() {
 # ---------------------------------------------------------------------------
 # Ensure /data exists and is writable
 # ---------------------------------------------------------------------------
-mkdir -p "$N8N_HOME" "$CADDY_DATA"
+mkdir -p "$N8N_STATE_DIR" "$CADDY_DATA"
 
 # ---------------------------------------------------------------------------
 # Wipe mode
 # ---------------------------------------------------------------------------
 if [ "$WIPE" = true ]; then
     warn "Wipe mode: destroying existing data"
-    rm -rf "${N8N_HOME:?}" "${CADDY_DATA:?}" "$SENTINEL" "$ENV_FILE"
-    mkdir -p "$N8N_HOME" "$CADDY_DATA"
+    rm -rf "${N8N_STATE_DIR:?}" "${CADDY_DATA:?}" "$SENTINEL" "$ENV_FILE"
+    mkdir -p "$N8N_STATE_DIR" "$CADDY_DATA"
 fi
 
 # ---------------------------------------------------------------------------
@@ -322,7 +322,9 @@ else
 fi
 
 # n8n env vars
-export N8N_USER_FOLDER="$N8N_HOME"
+# n8n stores its runtime state under "${N8N_USER_FOLDER}/.n8n".
+# Point it at /data so the effective state directory is /data/.n8n.
+export N8N_USER_FOLDER="$DATA_DIR"
 export N8N_ENCRYPTION_KEY
 export N8N_USER_MANAGEMENT_JWT_SECRET="$N8N_JWT_SECRET"
 export N8N_HOST
