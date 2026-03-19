@@ -54,6 +54,10 @@ require_cmd() {
     }
 }
 
+have_cmd() {
+    command -v "$1" >/dev/null 2>&1
+}
+
 extract_arg() {
     local name="$1"
     sed -n "s/^ARG ${name}=//p" "$DOCKERFILE_PATH" | head -n 1
@@ -138,6 +142,51 @@ prompt_with_default() {
     else
         printf '%s' "$answer"
     fi
+}
+
+report_gh_requirement() {
+    local os_name arch
+
+    os_name="$(uname -s)"
+    arch="$(uname -m)"
+
+    err "gh is required to publish a release"
+    warn "GitHub CLI does not provide an official curl installer of its own"
+    printf '[release] platform: %s/%s\n' "$os_name" "$arch" >&2
+    printf '[release] install docs: https://cli.github.com/manual/installation\n' >&2
+
+    case "$os_name" in
+        Darwin)
+            printf '[release] install hint: brew install gh\n' >&2
+            ;;
+        Linux)
+            if have_cmd brew; then
+                printf '[release] install hint: brew install gh\n' >&2
+            elif have_cmd apt-get && [ -f /etc/debian_version ]; then
+                printf '[release] install hint: use the official Debian/Ubuntu instructions, then install gh\n' >&2
+            elif have_cmd dnf; then
+                printf '[release] install hint: use the official RPM instructions, then run sudo dnf install gh\n' >&2
+            elif have_cmd yum; then
+                printf '[release] install hint: use the official RPM instructions, then run sudo yum install gh\n' >&2
+            elif have_cmd zypper; then
+                printf '[release] install hint: use the official RPM instructions, then run sudo zypper install gh\n' >&2
+            else
+                printf '[release] install hint: follow the official install docs for this Linux distribution\n' >&2
+            fi
+            ;;
+        *)
+            printf '[release] install hint: follow the official install docs for this platform\n' >&2
+            ;;
+    esac
+}
+
+ensure_gh_available() {
+    if have_cmd gh; then
+        return 0
+    fi
+
+    report_gh_requirement
+    exit 1
 }
 
 review_pin_value() {
@@ -367,7 +416,7 @@ if [ "$DRY_RUN" = true ]; then
     exit 0
 fi
 
-require_cmd gh
+ensure_gh_available
 
 if ! confirm "Publish GitHub release $chosen_tag from $(current_head)?"; then
     log "release cancelled"
