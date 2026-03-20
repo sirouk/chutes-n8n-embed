@@ -53,7 +53,11 @@ FROM node:${NODE_VERSION}-alpine AS native-addon-builder
 COPY --from=n8n-builder /compiled /usr/local/lib/node_modules/n8n
 RUN apk add --no-cache python3 make g++ && \
     cd /usr/local/lib/node_modules/n8n && \
-    npm rebuild sqlite3 isolated-vm
+    npm rebuild sqlite3 && \
+    ISOLATED_VM_DIR="$(node -p 'require("path").dirname(require.resolve("isolated-vm/package.json"))' | tr -d '\r\n')" && \
+    cd "$ISOLATED_VM_DIR" && \
+    node /usr/local/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js rebuild --release -j 1 && \
+    node /usr/local/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js clean
 
 FROM n8nio/base:${NODE_VERSION}
 

@@ -91,7 +91,12 @@ RUN NODE_ARCH="$(case "$(dpkg --print-architecture)" in \
         | tar -xJ -C /usr/local --strip-components=1
 
 COPY --from=n8n-builder /compiled /usr/local/lib/node_modules/n8n
-RUN cd /usr/local/lib/node_modules/n8n && npm rebuild sqlite3 isolated-vm
+RUN cd /usr/local/lib/node_modules/n8n && \
+    npm rebuild sqlite3 && \
+    ISOLATED_VM_DIR="$(node -p 'require("path").dirname(require.resolve("isolated-vm/package.json"))' | tr -d '\r\n')" && \
+    cd "$ISOLATED_VM_DIR" && \
+    node /usr/local/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js rebuild --release -j 1 && \
+    node /usr/local/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js clean
 
 # ---------------------------------------------------------------------------
 # Stage 4: extract openresty + Lua + native .so from e2ee-proxy
